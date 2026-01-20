@@ -1,0 +1,28 @@
+## Backend specific
+backend/Bazap.API/bin/
+backend/Bazap.API/obj/
+backend/Bazap.API/bazap.db
+backend/Bazap.API/bazap.db-shm
+backend/Bazap.API/bazap.db-wal
+backend/.vs/
+
+## Frontend specific
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+
+## IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+## Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
