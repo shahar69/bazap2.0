@@ -7,7 +7,7 @@ namespace Bazap.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[AllowAnonymous]
 public class ItemsSearchController : ControllerBase
 {
     private readonly IItemSearchService _itemService;

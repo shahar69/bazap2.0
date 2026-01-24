@@ -8,20 +8,49 @@ interface Alert {
   id: string;
 }
 
+type DisableReasonOption = 'VisualDamage' | 'Scrap' | 'Other';
+
 const InspectionPage: React.FC = () => {
   const [events, setEvents] = useState<any[]>([]);
   const [currentEvent, setCurrentEvent] = useState<any>(null);
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const [showDisableModal, setShowDisableModal] = useState(false);
-  const [selectedReason, setSelectedReason] = useState<string | null>(null);
+  const [selectedReason, setSelectedReason] = useState<DisableReasonOption | null>(null);
   const [notes, setNotes] = useState<string>('');
   const [isPrinting, setIsPrinting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [batchQuantity, setBatchQuantity] = useState<number>(1);
+  const [showSummary, setShowSummary] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     loadEvents();
   }, []);
+
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (showDisableModal || showBatchModal || showHelp) return;
+      
+      if (e.key === '1' || e.key === 'p') {
+        handlePassDecision();
+      } else if (e.key === '2' || e.key === 'd') {
+        setShowDisableModal(true);
+      } else if (e.key === 'b') {
+        setShowBatchModal(true);
+      } else if (e.key === 's') {
+        setShowSummary(true);
+      } else if (e.key === '?' || e.key === 'h') {
+        setShowHelp(!showHelp);
+      }
+    };
+
+    if (currentEvent) {
+      window.addEventListener('keydown', handleKeyPress);
+      return () => window.removeEventListener('keydown', handleKeyPress);
+    }
+  }, [currentEvent, showDisableModal, showBatchModal, showHelp]);
 
   const showAlert = (type: Alert['type'], message: string) => {
     const id = Date.now().toString();
@@ -73,7 +102,7 @@ const InspectionPage: React.FC = () => {
     return { total, completed, failed, passed, pending: total - completed };
   };
 
-  const { total, completed, pending } = recalcProgress(currentEvent?.items || []);
+  const { completed, pending } = recalcProgress(currentEvent?.items || []);
 
   const handlePassDecision = async () => {
     if (!currentItem) return;
@@ -82,9 +111,37 @@ const InspectionPage: React.FC = () => {
       setIsPrinting(true);
       await inspectionApi.makeDecision(currentItem.id, 'Pass', undefined, notes || undefined);
       showAlert('success', `✅ ${currentItem.itemName} סומן כתקין`);
+      setNotes(''); // Clear notes after decision
       advanceAfterDecision('Pass');
     } catch (error: any) {
       showAlert('error', error.response?.data?.message || 'שגיאה בהקלטת החלטה');
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handleBatchPass = async () => {
+    if (!currentItem || batchQuantity < 1) return;
+
+    try {
+      setIsPrinting(true);
+      let processed = 0;
+      
+      for (let i = 0; i < batchQuantity && currentItem; i++) {
+        await inspectionApi.makeDecision(currentItem.id, 'Pass', undefined, notes || undefined);
+        processed++;
+        if (i < batchQuantity - 1) {
+          advanceAfterDecision('Pass');
+        }
+      }
+      
+      showAlert('success', `✅ ${processed} פריטים סומנו כתקינים`);
+      setNotes('');
+      setShowBatchModal(false);
+      setBatchQuantity(1);
+      advanceAfterDecision('Pass');
+    } catch (error: any) {
+      showAlert('error', error.response?.data?.message || 'שגיאה בעיבוד אצווה');
     } finally {
       setIsPrinting(false);
     }

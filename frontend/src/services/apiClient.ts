@@ -71,11 +71,28 @@ export const itemSearchApi = {
 };
 
 export const inspectionApi = {
-  makeDecision: async (eventItemId: number, decision: string, disableReason?: string, notes?: string) => {
+  makeDecision: async (
+    eventItemId: number,
+    decision: 'Pass' | 'Disabled',
+    disableReason?: 'VisualDamage' | 'Scrap' | 'Other',
+    notes?: string
+  ) => {
+    // Backend expects numeric enums; map friendly strings to enum values
+    const decisionMap: Record<'Pass' | 'Disabled', number> = {
+      Pass: 0,
+      Disabled: 1,
+    };
+
+    const disableReasonMap: Record<'VisualDamage' | 'Scrap' | 'Other', number> = {
+      VisualDamage: 0,
+      Scrap: 1,
+      Other: 2,
+    };
+
     const response = await api.post('/inspection/decide', {
       eventItemId,
-      decision,
-      disableReason,
+      decision: decisionMap[decision],
+      disableReason: disableReason ? disableReasonMap[disableReason] : undefined,
       notes,
     });
     return response.data;
