@@ -52,7 +52,7 @@ api.interceptors.response.use(
       window.location.href = '/login';
     }
     
-    const message = error.response?.data?.message || error.message || 'שגיאה בתקשורת עם השרת';
+    const message = (error.response?.data as any)?.message || (error as any).message || 'שגיאה בתקשורת עם השרת';
     console.error('API Error:', message);
     
     return Promise.reject(new Error(message));

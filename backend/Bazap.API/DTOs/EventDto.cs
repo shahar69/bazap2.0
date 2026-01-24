@@ -44,4 +44,10 @@ public class EventDto
     public string CreatedByUser { get; set; } = string.Empty;
     public EventStatus Status { get; set; }
     public List<EventItemDto> Items { get; set; } = new();
+
+    // Derived inspection progress helpers
+    public int PendingItems { get; set; }
+    public int CompletedItems { get; set; }
+    public int PassedItems { get; set; }
+    public int FailedItems { get; set; }
 }

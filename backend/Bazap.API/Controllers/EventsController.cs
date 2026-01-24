@@ -1,4 +1,5 @@
 using Bazap.API.DTOs;
+using Bazap.API.Models;
 using Bazap.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,12 +21,19 @@ public class EventsController : ControllerBase
         _logger = logger;
     }
 
+    [AllowAnonymous]
     [HttpPost("create")]
     public async Task<ActionResult<EventDto>> CreateEvent([FromBody] CreateEventRequest request)
     {
         try
         {
-            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var userIdClaim = User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var userId = int.TryParse(userIdClaim, out var parsed) ? parsed : 0;
+
+            // Fallback to seeded admin for anonymous/dev flows
+            if (userId == 0)
+                userId = 1;
+
             var result = await _eventService.CreateEventAsync(request, userId);
             return Ok(result);
         }
@@ -37,6 +45,7 @@ public class EventsController : ControllerBase
     }
 
     [HttpGet("{id}")]
+    [AllowAnonymous]
     public async Task<ActionResult<EventDto>> GetEvent(int id)
     {
         try
@@ -78,6 +87,24 @@ public class EventsController : ControllerBase
         }
     }
 
+    [HttpPost("{id}/submit-for-inspection")]
+    public async Task<ActionResult> SubmitForInspection(int id)
+    {
+        try
+        {
+            await _eventService.SubmitEventForInspectionAsync(id);
+            return Ok(new { message = "אירוע הוגש לבחינה בהצלחה" });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = "אירוע לא נמצא" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpPost("{id}/complete")]
     public async Task<ActionResult> CompleteEvent(int id)
     {
@@ -93,11 +120,12 @@ public class EventsController : ControllerBase
     }
 
     [HttpGet("list")]
+    [AllowAnonymous]
     public async Task<ActionResult<List<EventDto>>> ListEvents([FromQuery] EventStatus? status)
     {
         try
         {
-            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var userId = int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var parsed) ? parsed : 1;
             var result = await _eventService.ListEventsAsync(userId, status);
             return Ok(result);
         }

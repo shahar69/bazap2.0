@@ -1,4 +1,5 @@
 using Bazap.API.Data;
+using Bazap.API.Models;
 using Bazap.API.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -36,10 +37,11 @@ builder.Services.AddAuthorization();
 
 // Add services
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IItemService, ItemSearchService>();
+builder.Services.AddScoped<IItemService, ItemService>();
 builder.Services.AddScoped<IReceiptService, ReceiptService>();
 builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<IInspectionService, InspectionService>();
+builder.Services.AddScoped<IItemSearchService, ItemSearchService>();
 builder.Services.AddScoped<IPrintService, PrintService>();
 
 // Add controllers
@@ -99,6 +101,9 @@ try
             context.SaveChanges();
             logger.LogInformation("👤 Admin user created (admin/admin123)");
         }
+
+        // Seed default equipment items from log export (or fallback set)
+        SeedEquipmentFromLog(context, logger);
         
         logger.LogInformation("✅ Database initialized successfully");
     }
@@ -152,3 +157,131 @@ app.MapControllers();
 
 logger.LogInformation("🔗 API will listen on: http://localhost:5000");
 app.Run();
+
+// Helpers
+static void SeedEquipmentFromLog(BazapContext context, ILogger logger)
+{
+    if (context.Items.Any())
+    {
+        logger.LogInformation("📦 Items already exist, skipping log seed");
+        return;
+    }
+
+    var imported = ImportFromLog(context, logger);
+    if (imported > 0)
+    {
+        logger.LogInformation("✅ Seeded {Count} equipment items from log.txt", imported);
+        return;
+    }
+
+    // Fallback hardcoded items for tests if log import failed/empty
+    var fallbackItems = new []
+    {
+        new Item { Name = "קורא מפלס", Code = "KM-001", Description = "דוגמת בדיקה", QuantityInStock = 5, IsActive = true },
+        new Item { Name = "חוליה גמישה", Code = "HG-002", Description = "דוגמת בדיקה", QuantityInStock = 10, IsActive = true },
+        new Item { Name = "מגפון", Code = "MG-003", Description = "דוגמת בדיקה", QuantityInStock = 3, IsActive = true },
+        new Item { Name = "פתיל לב", Code = "PL-004", Description = "דוגמת בדיקה", QuantityInStock = 8, IsActive = true },
+        new Item { Name = "אנטנת סנפיר", Code = "AS-005", Description = "דוגמת בדיקה", QuantityInStock = 4, IsActive = true }
+    };
+
+    context.Items.AddRange(fallbackItems);
+    context.SaveChanges();
+    logger.LogInformation("✅ Seeded {Count} fallback equipment items", fallbackItems.Length);
+}
+
+static int ImportFromLog(BazapContext context, ILogger logger)
+{
+    var logPath = FindFileUpwards("log.txt");
+    if (logPath == null)
+    {
+        logger.LogWarning("⚠️ log.txt not found; skipping log import");
+        return 0;
+    }
+
+    var lines = File.ReadAllLines(logPath);
+    if (lines.Length <= 1)
+    {
+        logger.LogWarning("⚠️ log.txt has no data to import");
+        return 0;
+    }
+
+    var uniqueItems = new Dictionary<string, Item>();
+
+    for (var i = 1; i < lines.Length; i++) // skip header
+    {
+        var line = lines[i].Trim();
+        if (string.IsNullOrWhiteSpace(line))
+            continue;
+
+        var parts = line.Split('\t');
+
+        var quantityStr = parts.ElementAtOrDefault(0)?.Trim() ?? "0";
+        var comments = parts.ElementAtOrDefault(1)?.Trim() ?? string.Empty;
+        var orderNumber = parts.ElementAtOrDefault(2)?.Trim() ?? string.Empty;
+        var makat = parts.ElementAtOrDefault(3)?.Trim() ?? string.Empty;
+        var name = parts.ElementAtOrDefault(4)?.Trim() ?? string.Empty;
+        var date = parts.ElementAtOrDefault(5)?.Trim() ?? string.Empty;
+
+        var hasName = !string.IsNullOrWhiteSpace(name);
+        var hasCode = !string.IsNullOrWhiteSpace(makat);
+
+        if (!hasName && !hasCode)
+            continue;
+
+        var key = hasCode ? makat : name;
+        var quantity = int.TryParse(quantityStr, out var q) ? Math.Max(0, q) : 0;
+
+        if (!uniqueItems.TryGetValue(key, out var item))
+        {
+            var descriptionParts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(orderNumber)) descriptionParts.Add($"מס הזמנה {orderNumber}");
+            if (!string.IsNullOrWhiteSpace(comments)) descriptionParts.Add($"הערות: {comments}");
+            if (!string.IsNullOrWhiteSpace(date)) descriptionParts.Add($"תאריך: {date}");
+
+            item = new Item
+            {
+                Name = hasName ? name : makat,
+                Code = hasCode ? makat : null,
+                Description = descriptionParts.Count > 0 ? string.Join(" | ", descriptionParts) : null,
+                QuantityInStock = quantity,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            uniqueItems[key] = item;
+        }
+        else
+        {
+            item.QuantityInStock += quantity;
+        }
+    }
+
+    if (uniqueItems.Count == 0)
+    {
+        logger.LogWarning("⚠️ No equipment rows were imported from log.txt");
+        return 0;
+    }
+
+    context.Items.AddRange(uniqueItems.Values);
+    context.SaveChanges();
+    return uniqueItems.Count;
+}
+
+static string? FindFileUpwards(string fileName, int maxDepth = 12)
+{
+    var current = AppContext.BaseDirectory;
+    for (var i = 0; i < maxDepth; i++)
+    {
+        var candidate = Path.Combine(current, fileName);
+        if (File.Exists(candidate))
+            return candidate;
+
+        var parent = Directory.GetParent(current);
+        if (parent == null)
+            break;
+        current = parent.FullName;
+    }
+
+    return null;
+}

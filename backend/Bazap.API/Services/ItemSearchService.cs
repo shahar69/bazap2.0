@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Bazap.API.Services;
 
-public class ItemSearchService : IItemService
+public class ItemSearchService : IItemSearchService
 {
     private readonly BazapContext _context;
     private readonly ILogger<ItemSearchService> _logger;
@@ -21,28 +21,29 @@ public class ItemSearchService : IItemService
 
         if (!string.IsNullOrWhiteSpace(request.Query))
         {
-            var searchTerm = request.Query.ToLower();
-            query = query.Where(i => 
-                i.Code.ToLower().Contains(searchTerm) || 
-                i.Name.ToLower().Contains(searchTerm)
+            var searchTerm = request.Query.ToLowerInvariant();
+            query = query.Where(i =>
+                (!string.IsNullOrEmpty(i.Code) && i.Code.ToLower().Contains(searchTerm)) ||
+                (!string.IsNullOrEmpty(i.Name) && i.Name.ToLower().Contains(searchTerm))
             );
         }
 
-        var items = await query
+        var limit = request.Limit <= 0 ? 20 : Math.Min(request.Limit, 200);
+
+        return await query
             .Where(i => i.IsActive)
-            .Take(request.Limit)
+            .OrderBy(i => i.Id)
+            .Take(limit)
             .Select(i => new ItemSearchResponse
             {
                 Id = i.Id,
-                Makat = i.Code,
-                Name = i.Name,
+                Makat = i.Code ?? string.Empty,
+                Name = i.Name ?? string.Empty,
                 Description = i.Description,
                 IsActive = i.IsActive,
                 FrequencyScore = 0
             })
             .ToListAsync();
-
-        return items;
     }
 
     public async Task<List<ItemGroupDto>> GetItemGroupsAsync()
@@ -59,15 +60,17 @@ public class ItemSearchService : IItemService
 
     public async Task<List<ItemSearchResponse>> GetRecentItemsAsync(int limit)
     {
+        var safeLimit = limit <= 0 ? 20 : Math.Min(limit, 200);
+
         return await _context.Items
             .Where(i => i.IsActive)
             .OrderByDescending(i => i.Id)
-            .Take(limit)
+            .Take(safeLimit)
             .Select(i => new ItemSearchResponse
             {
                 Id = i.Id,
-                Makat = i.Code,
-                Name = i.Name,
+                Makat = i.Code ?? string.Empty,
+                Name = i.Name ?? string.Empty,
                 Description = i.Description,
                 IsActive = i.IsActive,
                 FrequencyScore = 0
@@ -77,15 +80,17 @@ public class ItemSearchService : IItemService
 
     public async Task<List<ItemSearchResponse>> GetFrequentItemsAsync(int limit)
     {
+        var safeLimit = limit <= 0 ? 20 : Math.Min(limit, 200);
+
         return await _context.Items
             .Where(i => i.IsActive)
             .OrderByDescending(i => i.Id)
-            .Take(limit)
+            .Take(safeLimit)
             .Select(i => new ItemSearchResponse
             {
                 Id = i.Id,
-                Makat = i.Code,
-                Name = i.Name,
+                Makat = i.Code ?? string.Empty,
+                Name = i.Name ?? string.Empty,
                 Description = i.Description,
                 IsActive = i.IsActive,
                 FrequencyScore = 0

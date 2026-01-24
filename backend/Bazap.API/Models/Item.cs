@@ -14,4 +14,5 @@ public class Item
 
     // Navigation properties
     public ICollection<ReceiptItem> ReceiptItems { get; set; } = new List<ReceiptItem>();
+    public ICollection<EventItem> EventItems { get; set; } = new List<EventItem>();
 }

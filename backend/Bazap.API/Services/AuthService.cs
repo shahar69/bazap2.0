@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 
 namespace Bazap.API.Services;
 
@@ -93,7 +94,7 @@ public class AuthService : IAuthService
 
     public async Task<User?> GetUserByIdAsync(int userId)
     {
-        var user = _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
         return user;
     }
 

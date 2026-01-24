@@ -36,105 +36,64 @@ const App: React.FC = () => {
   };
 
   return (
-    <div>
-      <header className="header">
-        <div className="container">
-          <div className="header-content">
-            <div className="header-title">
-              <h1>Bazap 2.0</h1>
-            </div>
-            <nav className="header-nav">
-              <button
-                onClick={() => setCurrentPage('receipt')}
-                style={{
-                  background: currentPage === 'receipt' ? '#3498db' : 'transparent',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 15px',
-                  cursor: 'pointer',
-                  borderRadius: '4px'
-                }}
-              >
-                קבלת ציוד (ישן)
-              </button>
-              <button
-                onClick={() => setCurrentPage('receiving')}
-                style={{
-                  background: currentPage === 'receiving' ? '#3498db' : 'transparent',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 15px',
-                  cursor: 'pointer',
-                  borderRadius: '4px'
-                }}
-              >
-                📦 קליטה
-              </button>
-              <button
-                onClick={() => setCurrentPage('inspection')}
-                style={{
-                  background: currentPage === 'inspection' ? '#3498db' : 'transparent',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 15px',
-                  cursor: 'pointer',
-                  borderRadius: '4px'
-                }}
-              >
-                🔍 בחינה
-              </button>
-              <button
-                onClick={() => setCurrentPage('items')}
-                style={{
-                  background: currentPage === 'items' ? '#3498db' : 'transparent',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 15px',
-                  cursor: 'pointer',
-                  borderRadius: '4px'
-                }}
-              >
-                ניהול פריטים
-              </button>
-              <button
-                onClick={() => setCurrentPage('history')}
-                style={{
-                  background: currentPage === 'history' ? '#3498db' : 'transparent',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 15px',
-                  cursor: 'pointer',
-                  borderRadius: '4px'
-                }}
-              >
-                היסטוריה
-              </button>
-              <div style={{ color: '#bdc3c7' }}>
-                משתמש: {user.username}
-              </div>
-              <button
-                onClick={logout}
-                className="logout-btn"
-              >
-                התנתקות
-              </button>
-            </nav>
+    <div className="app-container">
+      <header className="app-header">
+        <div className="header-container">
+          <div className="header-logo">
+            <h1>Bazap 2.0</h1>
+            <p>מערכת ניהול ציוד</p>
           </div>
+          <nav className="header-nav">
+            <button
+              onClick={() => setCurrentPage('receipt')}
+              className={`nav-btn ${currentPage === 'receipt' ? 'active' : ''}`}
+            >
+              קבלת ציוד (ישן)
+            </button>
+            <button
+              onClick={() => setCurrentPage('receiving')}
+              className={`nav-btn ${currentPage === 'receiving' ? 'active' : ''}`}
+            >
+              📦 קליטה
+            </button>
+            <button
+              onClick={() => setCurrentPage('inspection')}
+              className={`nav-btn ${currentPage === 'inspection' ? 'active' : ''}`}
+            >
+              🔍 בחינה
+            </button>
+            <button
+              onClick={() => setCurrentPage('items')}
+              className={`nav-btn ${currentPage === 'items' ? 'active' : ''}`}
+            >
+              ניהול פריטים
+            </button>
+            <button
+              onClick={() => setCurrentPage('history')}
+              className={`nav-btn ${currentPage === 'history' ? 'active' : ''}`}
+            >
+              היסטוריה
+            </button>
+            <div className="user-info">
+              👤 {user.username}
+            </div>
+            <button
+              onClick={logout}
+              className="logout-btn"
+            >
+              התנתקות
+            </button>
+          </nav>
         </div>
       </header>
 
-      <main style={{ paddingBottom: '40px' }}>
+      <main className="app-main">
         {renderPage()}
       </main>
 
-      <footer style={{
-        backgroundColor: '#2c3e50',
-        color: 'white',
-        textAlign: 'center',
-        padding: '20px',
-        marginTop: '40px'
-      }}>
+      <footer className="app-footer">
         <p>Bazap 2.0 - מערכת ניהול ציוד לגדוד 388</p>
+        <p style={{ fontSize: '0.9rem', marginTop: '0.5rem', opacity: 0.8 }}>כל הזכויות שמורות © 2024</p>
       </footer>
     </div>
   );

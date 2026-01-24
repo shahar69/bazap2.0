@@ -8,7 +8,8 @@ namespace Bazap.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "Admin")]
+// Explicitly allow anonymous because inspection is used in kiosk/dev flows
+// and the controller handles its own user fallback.
 public class InspectionController : ControllerBase
 {
     private readonly IInspectionService _inspectionService;
@@ -25,18 +26,29 @@ public class InspectionController : ControllerBase
         _logger = logger;
     }
 
+    [AllowAnonymous]
     [HttpPost("decide")]
     public async Task<ActionResult<InspectionActionDto>> MakeDecision([FromBody] InspectionDecisionRequest request)
     {
         try
         {
-            var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+            var userId = int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var parsed) ? parsed : 1;
+
+            if (request.Decision == Models.InspectionDecision.Disabled && request.DisableReason == null)
+            {
+                return BadRequest(new { message = "יש לבחור סיבת השבתה" });
+            }
+
             var result = await _inspectionService.RecordDecisionAsync(request, userId);
             return Ok(result);
         }
         catch (KeyNotFoundException)
         {
             return NotFound(new { message = "פריט לא נמצא" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
         catch (Exception ex)
         {
@@ -45,6 +57,7 @@ public class InspectionController : ControllerBase
         }
     }
 
+    [AllowAnonymous]
     [HttpGet("label-preview/{eventItemId}")]
     public async Task<ActionResult<LabelDataDto>> GetLabelPreview(int eventItemId)
     {
@@ -59,6 +72,7 @@ public class InspectionController : ControllerBase
         }
     }
 
+    [AllowAnonymous]
     [HttpPost("print-label")]
     public async Task<IActionResult> PrintLabel([FromBody] PrintLabelRequest request)
     {
@@ -74,6 +88,7 @@ public class InspectionController : ControllerBase
         }
     }
 
+    [AllowAnonymous]
     [HttpPost("print/batch")]
     public async Task<IActionResult> PrintBatch([FromBody] BatchPrintRequest request)
     {

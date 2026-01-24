@@ -10,10 +10,10 @@ namespace Bazap.API.Controllers;
 [Authorize]
 public class ItemsSearchController : ControllerBase
 {
-    private readonly IItemService _itemService;
+    private readonly IItemSearchService _itemService;
     private readonly ILogger<ItemsSearchController> _logger;
 
-    public ItemsSearchController(IItemService itemService, ILogger<ItemsSearchController> logger)
+    public ItemsSearchController(IItemSearchService itemService, ILogger<ItemsSearchController> logger)
     {
         _itemService = itemService;
         _logger = logger;

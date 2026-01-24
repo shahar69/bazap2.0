@@ -62,7 +62,7 @@ public class BazapContext : DbContext
 
         modelBuilder.Entity<EventItem>()
             .HasOne(ei => ei.Item)
-            .WithMany(i => i.ReceiptItems) // reuse existing relation to items
+            .WithMany(i => i.EventItems)
             .HasForeignKey(ei => ei.ItemId)
             .OnDelete(DeleteBehavior.Restrict);
 

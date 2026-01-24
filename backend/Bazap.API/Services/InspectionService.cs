@@ -19,9 +19,13 @@ public class InspectionService : IInspectionService
     public async Task<InspectionActionDto> RecordDecisionAsync(InspectionDecisionRequest request, int userId)
     {
         var eventItem = await _context.EventItems
-            .Include(ei => ei.Event)
+            .Include(ei => ei.Event!)
+            .ThenInclude(e => e.Items)
             .FirstOrDefaultAsync(ei => ei.Id == request.EventItemId)
             ?? throw new KeyNotFoundException($"EventItem {request.EventItemId} not found");
+
+        if (request.Decision == InspectionDecision.Disabled && request.DisableReason == null)
+            throw new InvalidOperationException("יש לבחור סיבת השבתה");
 
         var action = new InspectionAction
         {
@@ -36,9 +40,31 @@ public class InspectionService : IInspectionService
         _context.InspectionActions.Add(action);
 
         eventItem.InspectionStatus = request.Decision == InspectionDecision.Pass ? ItemInspectionStatus.Pass : ItemInspectionStatus.Fail;
+
+        var evt = eventItem.Event ?? throw new InvalidOperationException("אירוע לא קיים עבור הפריט");
+
+        if (evt.Status == EventStatus.Pending)
+        {
+            // Mark the event as in-progress on the first decision
+            evt.Status = EventStatus.InProgress;
+            _context.Events.Update(evt);
+        }
+
         _context.EventItems.Update(eventItem);
 
         await _context.SaveChangesAsync();
+
+        if (evt != null)
+        {
+            // Reload items to ensure latest statuses for completion calculation
+            await _context.Entry(evt).Collection(e => e.Items).LoadAsync();
+            if (evt.Items.All(i => i.InspectionStatus != ItemInspectionStatus.Pending))
+            {
+                evt.Status = EventStatus.Completed;
+                _context.Events.Update(evt);
+                await _context.SaveChangesAsync();
+            }
+        }
 
         _logger.LogInformation("Inspection decision recorded for EventItem {EventItemId}: {Decision}", request.EventItemId, request.Decision);
 
@@ -61,7 +87,6 @@ public class InspectionService : IInspectionService
         var eventItem = await _context.EventItems
             .Include(ei => ei.Event)
             .Include(ei => ei.InspectionActions)
-            .ThenInclude(a => a.InspectionAction)
             .FirstOrDefaultAsync(ei => ei.Id == eventItemId)
             ?? throw new KeyNotFoundException($"EventItem {eventItemId} not found");
 

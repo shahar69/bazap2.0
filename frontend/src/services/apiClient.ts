@@ -2,7 +2,14 @@ import api from './axiosInstance';
 
 export const eventApi = {
   createEvent: async (sourceUnit: string, receiver: string, type: string) => {
-    const response = await api.post('/events/create', { sourceUnit, receiver, type });
+    // Convert type string to EventType enum value
+    const typeMap: Record<string, number> = {
+      'Receiving': 0,
+      'Inspection': 1,
+      'Outgoing': 2
+    };
+    const typeValue = typeMap[type] ?? 0;
+    const response = await api.post('/events/create', { sourceUnit, receiver, type: typeValue });
     return response.data;
   },
 
@@ -27,6 +34,11 @@ export const eventApi = {
 
   completeEvent: async (eventId: number) => {
     const response = await api.post(`/events/${eventId}/complete`);
+    return response.data;
+  },
+
+  submitForInspection: async (eventId: number) => {
+    const response = await api.post(`/events/${eventId}/submit-for-inspection`);
     return response.data;
   },
 
