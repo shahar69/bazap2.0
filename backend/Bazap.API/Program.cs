@@ -36,8 +36,11 @@ builder.Services.AddAuthorization();
 
 // Add services
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IItemService, ItemService>();
+builder.Services.AddScoped<IItemService, ItemSearchService>();
 builder.Services.AddScoped<IReceiptService, ReceiptService>();
+builder.Services.AddScoped<IEventService, EventService>();
+builder.Services.AddScoped<IInspectionService, InspectionService>();
+builder.Services.AddScoped<IPrintService, PrintService>();
 
 // Add controllers
 builder.Services.AddControllers();
