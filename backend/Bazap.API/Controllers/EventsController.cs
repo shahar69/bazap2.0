@@ -59,6 +59,7 @@ public class EventsController : ControllerBase
         }
     }
 
+    [AllowAnonymous]
     [HttpPost("{id}/add-item")]
     public async Task<ActionResult<EventDto>> AddItemToEvent(int id, [FromBody] AddItemToEventRequest request)
     {
@@ -71,22 +72,34 @@ public class EventsController : ControllerBase
         {
             return NotFound(new { message = "אירוע לא נמצא" });
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding item to event {EventId}", id);
+            return StatusCode(500, new { message = "שגיאה בהוספת פריט לאירוע" });
+        }
     }
 
+    [AllowAnonymous]
     [HttpPost("{id}/remove-item/{itemId}")]
-    public async Task<ActionResult> RemoveItemFromEvent(int id, int itemId)
+    public async Task<ActionResult<EventDto>> RemoveItemFromEvent(int id, int itemId)
     {
         try
         {
-            await _eventService.RemoveItemFromEventAsync(id, itemId);
-            return Ok();
+            var result = await _eventService.RemoveItemFromEventAsync(id, itemId);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Error removing item {ItemId} from event {EventId}", itemId, id);
             return StatusCode(500, new { message = ex.Message });
         }
     }
 
+    [AllowAnonymous]
     [HttpPost("{id}/submit-for-inspection")]
     public async Task<ActionResult> SubmitForInspection(int id)
     {
@@ -102,6 +115,11 @@ public class EventsController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error submitting event {EventId} for inspection", id);
+            return StatusCode(500, new { message = "שגיאה בהגשת אירוע לבחינה" });
         }
     }
 

@@ -35,6 +35,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+// Add OpenTelemetry tracing
+builder.AddBazapTracing();
+
 // Add services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IItemService, ItemService>();
@@ -67,6 +70,7 @@ var app = builder.Build();
 // Configure logging
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("🚀 Bazap 2.0 API Starting...");
+logger.LogInformation("📡 OpenTelemetry tracing configured - exporting to http://localhost:4317");
 
 // Migrate database on startup
 try

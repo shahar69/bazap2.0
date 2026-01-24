@@ -78,8 +78,8 @@ public class InspectionController : ControllerBase
     {
         try
         {
-            var pdfData = await _printService.GenerateLabelPdfAsync(request.EventItemId, request.Copies);
-            return File(pdfData, "application/pdf", $"label-{request.EventItemId}.pdf");
+            var htmlData = await _printService.GenerateLabelPdfAsync(request.EventItemId, request.Copies);
+            return File(htmlData, "text/html; charset=utf-8", $"label-{request.EventItemId}.html");
         }
         catch (Exception ex)
         {
@@ -94,8 +94,8 @@ public class InspectionController : ControllerBase
     {
         try
         {
-            var pdfData = await _printService.GenerateBatchLabelsPdfAsync(request.EventItemIds);
-            return File(pdfData, "application/pdf", "labels-batch.pdf");
+            var htmlData = await _printService.GenerateBatchLabelsPdfAsync(request.EventItemIds);
+            return File(htmlData, "text/html; charset=utf-8", "labels-batch.html");
         }
         catch (Exception ex)
         {

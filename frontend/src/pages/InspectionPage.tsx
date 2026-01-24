@@ -8,7 +8,7 @@ interface Alert {
   id: string;
 }
 
-type DisableReasonOption = 'VisualDamage' | 'Scrap' | 'Other';
+type DisableReasonOption = 'VisualDamage' | 'Scrap' | 'Malfunction' | 'MissingParts' | 'Expired' | 'Calibration' | 'Other';
 
 const InspectionPage: React.FC = () => {
   const [events, setEvents] = useState<any[]>([]);
@@ -162,9 +162,9 @@ const InspectionPage: React.FC = () => {
       
       // Try to print label
       try {
-        const pdfBlob = await inspectionApi.printLabel(currentItem.id, 1);
-        downloadPdf(pdfBlob, `label-${currentItem.itemMakat}-${Date.now()}.pdf`);
-        showAlert('success', `❌ ${currentItem.itemName} הושבת וקובץ הדפסה נוצר`);
+        const htmlBlob = await inspectionApi.printLabel(currentItem.id, 1);
+        downloadAndPrintLabel(htmlBlob, `label-${currentItem.itemMakat}-${Date.now()}.html`);
+        showAlert('success', `❌ ${currentItem.itemName} הושבת - קובץ המדבקה עתיד להדפסה`);
       } catch (printError) {
         showAlert('warning', `${currentItem.itemName} הושבת (לא הצליח ליצור קובץ הדפסה)`);
       }
@@ -209,13 +209,35 @@ const InspectionPage: React.FC = () => {
     });
   };
 
-  const downloadPdf = (blob: Blob, filename: string) => {
+  const downloadAndPrintLabel = (blob: Blob, filename: string) => {
+    // Create a temporary window with the HTML content
     const url = window.URL.createObjectURL(blob);
+    
+    // First, download the file
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
+    document.body.appendChild(link);
     link.click();
-    window.URL.revokeObjectURL(url);
+    document.body.removeChild(link);
+    
+    // Then open in new tab for printing
+    setTimeout(() => {
+      const printWindow = window.open(url, 'print', 'height=600,width=800');
+      if (printWindow) {
+        // Wait for the content to load, then trigger print dialog
+        printWindow.addEventListener('load', () => {
+          setTimeout(() => {
+            printWindow.print();
+          }, 250);
+        });
+      }
+    }, 500);
+    
+    // Clean up after a delay
+    setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+    }, 2000);
   };
 
   const goBack = () => {
@@ -320,9 +342,43 @@ const InspectionPage: React.FC = () => {
       ))}
 
       <div className="inspection-container">
-        <button className="back-btn" onClick={goBack} disabled={isPrinting}>
-          ⬅️ חזור
-        </button>
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+          <button className="back-btn" onClick={goBack} disabled={isPrinting}>
+            ⬅️ חזור
+          </button>
+          <button 
+            className="summary-btn" 
+            onClick={() => setShowSummary(true)}
+            style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
+              border: 'none',
+              padding: '0.75rem 1.5rem',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '1rem'
+            }}
+          >
+            📊 סיכום
+          </button>
+          <button 
+            className="help-btn" 
+            onClick={() => setShowHelp(!showHelp)}
+            style={{
+              background: '#10b981',
+              color: 'white',
+              border: 'none',
+              padding: '0.75rem 1.5rem',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '1rem'
+            }}
+          >
+            ❓ עזרה
+          </button>
+        </div>
 
         {/* Progress Bar */}
         <div className="inspection-progress">
@@ -391,11 +447,30 @@ const InspectionPage: React.FC = () => {
 
             <div className="decision-section">
               <h3>👉 החלטת בדיקה</h3>
+              
+              <textarea
+                placeholder="הערות לפריט זה (לא חובה)"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                style={{ 
+                  width: '100%', 
+                  minHeight: '60px', 
+                  marginBottom: '1rem',
+                  padding: '0.75rem',
+                  borderRadius: '8px',
+                  border: '2px solid #e5e7eb',
+                  fontSize: '0.95rem',
+                  fontFamily: 'inherit'
+                }}
+                disabled={isPrinting}
+              />
+
               <div className="decision-buttons">
                 <button
                   className="pass-btn"
                   onClick={handlePassDecision}
                   disabled={isPrinting || showDisableModal}
+                  title="קיצור: 1 או P"
                 >
                   <span>✅</span>
                   <span>תקין</span>
@@ -405,9 +480,33 @@ const InspectionPage: React.FC = () => {
                   className="fail-btn"
                   onClick={() => setShowDisableModal(true)}
                   disabled={isPrinting || showDisableModal}
+                  title="קיצור: 2 או D"
                 >
                   <span>❌</span>
                   <span>משהו לא בסדר</span>
+                </button>
+
+                <button
+                  className="batch-btn"
+                  onClick={() => setShowBatchModal(true)}
+                  disabled={isPrinting || pending < 2}
+                  title="קיצור: B"
+                  style={{
+                    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                    color: 'white',
+                    border: 'none',
+                    padding: '1rem 1.5rem',
+                    borderRadius: '12px',
+                    fontSize: '1.1rem',
+                    fontWeight: '600',
+                    cursor: pending < 2 ? 'not-allowed' : 'pointer',
+                    opacity: pending < 2 ? 0.5 : 1,
+                    transition: 'all 0.3s ease',
+                    flex: 1
+                  }}
+                >
+                  <span>🚀</span>
+                  <span>עיבוד אצווה</span>
                 </button>
               </div>
             </div>
@@ -425,7 +524,7 @@ const InspectionPage: React.FC = () => {
               placeholder="הערות נוספות (לא חובה)"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              style={{ width: '100%', minHeight: '80px', marginBottom: '0.75rem' }}
+              style={{ width: '100%', minHeight: '80px', marginBottom: '0.75rem', padding: '0.75rem', borderRadius: '8px' }}
               disabled={isPrinting}
             />
 
@@ -439,7 +538,7 @@ const InspectionPage: React.FC = () => {
                 }}
                 disabled={isPrinting}
               >
-                🔴 נזק ויזואלי (שריטות, שברים וכו׳)
+                🔴 נזק ויזואלי
               </button>
 
               <button
@@ -451,7 +550,55 @@ const InspectionPage: React.FC = () => {
                 }}
                 disabled={isPrinting}
               >
-                🗑️ גרוטאות (לא ניתן לתיקון)
+                🗑️ גרוטאות
+              </button>
+
+              <button
+                className="reason-btn"
+                onClick={() => setSelectedReason('Malfunction')}
+                style={{
+                  borderColor: selectedReason === 'Malfunction' ? '#ef4444' : undefined,
+                  background: selectedReason === 'Malfunction' ? '#fee2e2' : undefined,
+                }}
+                disabled={isPrinting}
+              >
+                ⚠️ תקלה/לא תקין
+              </button>
+
+              <button
+                className="reason-btn"
+                onClick={() => setSelectedReason('MissingParts')}
+                style={{
+                  borderColor: selectedReason === 'MissingParts' ? '#ef4444' : undefined,
+                  background: selectedReason === 'MissingParts' ? '#fee2e2' : undefined,
+                }}
+                disabled={isPrinting}
+              >
+                🔧 חלקים חסרים
+              </button>
+
+              <button
+                className="reason-btn"
+                onClick={() => setSelectedReason('Expired')}
+                style={{
+                  borderColor: selectedReason === 'Expired' ? '#ef4444' : undefined,
+                  background: selectedReason === 'Expired' ? '#fee2e2' : undefined,
+                }}
+                disabled={isPrinting}
+              >
+                ⏰ פג תוקף
+              </button>
+
+              <button
+                className="reason-btn"
+                onClick={() => setSelectedReason('Calibration')}
+                style={{
+                  borderColor: selectedReason === 'Calibration' ? '#ef4444' : undefined,
+                  background: selectedReason === 'Calibration' ? '#fee2e2' : undefined,
+                }}
+                disabled={isPrinting}
+              >
+                📏 טעון כיול
               </button>
 
               <button
@@ -492,6 +639,223 @@ const InspectionPage: React.FC = () => {
                 ❌ ביטול
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Processing Modal */}
+      {showBatchModal && (
+        <div className="modal-overlay" onClick={() => setShowBatchModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>🚀 עיבוד אצווה - פריטים זהים</h3>
+            <p style={{ marginBottom: '1rem', color: '#6b7280' }}>
+              סמן מספר פריטים זהים רצופים כתקינים בבת אחת
+            </p>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+                כמה פריטים לעבד? (נותרו {pending} ממתינים)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max={pending}
+                value={batchQuantity}
+                onChange={(e) => setBatchQuantity(Math.min(parseInt(e.target.value) || 1, pending))}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  fontSize: '1.1rem',
+                  borderRadius: '8px',
+                  border: '2px solid #e5e7eb'
+                }}
+              />
+            </div>
+
+            <textarea
+              placeholder="הערות משותפות לכל הפריטים (לא חובה)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              style={{ width: '100%', minHeight: '60px', marginBottom: '1rem', padding: '0.75rem', borderRadius: '8px' }}
+            />
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                onClick={handleBatchPass}
+                disabled={isPrinting || batchQuantity < 1}
+                style={{
+                  background: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '8px',
+                  fontSize: '1rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  flex: 1
+                }}
+              >
+                {isPrinting ? '⏳ מעבד...' : `✅ אשר ${batchQuantity} פריטים כתקינים`}
+              </button>
+              <button
+                onClick={() => {
+                  setShowBatchModal(false);
+                  setBatchQuantity(1);
+                }}
+                disabled={isPrinting}
+                style={{
+                  background: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '8px',
+                  fontSize: '1rem',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Summary Modal */}
+      {showSummary && (
+        <div className="modal-overlay" onClick={() => setShowSummary(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px', maxHeight: '80vh', overflow: 'auto' }}>
+            <h3>📊 סיכום בחינה - אירוע {currentEvent?.number}</h3>
+            
+            <div style={{ marginBottom: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+              <div style={{ background: '#f3f4f6', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#10b981' }}>
+                  {currentEvent?.items?.filter((i: any) => i.inspectionStatus === 1).length || 0}
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>תקינים ✅</div>
+              </div>
+              <div style={{ background: '#f3f4f6', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ef4444' }}>
+                  {currentEvent?.items?.filter((i: any) => i.inspectionStatus === 2).length || 0}
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>מושבתים ❌</div>
+              </div>
+              <div style={{ background: '#f3f4f6', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#f59e0b' }}>
+                  {pending}
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>ממתינים ⏳</div>
+              </div>
+            </div>
+
+            <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '1rem', maxHeight: '400px', overflow: 'auto' }}>
+              <h4 style={{ marginTop: 0 }}>רשימת פריטים:</h4>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#e5e7eb', fontWeight: 'bold' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'right', borderBottom: '2px solid #d1d5db' }}>מק״ט</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'right', borderBottom: '2px solid #d1d5db' }}>שם פריט</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '2px solid #d1d5db' }}>כמות</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '2px solid #d1d5db' }}>סטטוס</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentEvent?.items?.map((item: any, idx: number) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                      <td style={{ padding: '0.5rem', fontFamily: 'monospace', fontSize: '0.9rem' }}>{item.itemMakat}</td>
+                      <td style={{ padding: '0.5rem' }}>{item.itemName}</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>{item.quantity}</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                        {item.inspectionStatus === 0 && <span style={{ color: '#f59e0b' }}>⏳ ממתין</span>}
+                        {item.inspectionStatus === 1 && <span style={{ color: '#10b981' }}>✅ תקין</span>}
+                        {item.inspectionStatus === 2 && <span style={{ color: '#ef4444' }}>❌ מושבת</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <button
+              onClick={() => setShowSummary(false)}
+              style={{
+                marginTop: '1rem',
+                width: '100%',
+                background: '#667eea',
+                color: 'white',
+                border: 'none',
+                padding: '0.75rem',
+                borderRadius: '8px',
+                fontSize: '1rem',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              סגור
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Help Modal */}
+      {showHelp && (
+        <div className="modal-overlay" onClick={() => setShowHelp(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>❓ עזרה - קיצורי מקלדת</h3>
+            
+            <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+              <table style={{ width: '100%' }}>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>1 או P</td>
+                    <td style={{ padding: '0.5rem' }}>סמן פריט כתקין ✅</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>2 או D</td>
+                    <td style={{ padding: '0.5rem' }}>פתח חלון השבתה ❌</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>B</td>
+                    <td style={{ padding: '0.5rem' }}>עיבוד אצווה 🚀</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>S</td>
+                    <td style={{ padding: '0.5rem' }}>הצג סיכום 📊</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '0.5rem', fontWeight: 'bold' }}>? או H</td>
+                    <td style={{ padding: '0.5rem' }}>עזרה זו ❓</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ background: '#dbeafe', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
+              <h4 style={{ marginTop: 0, color: '#1e40af' }}>💡 טיפים:</h4>
+              <ul style={{ margin: 0, paddingRight: '1.5rem', color: '#1e40af' }}>
+                <li>השתמש בעיבוד אצווה לפריטים זהים רצופים</li>
+                <li>הוסף הערות לכל פריט לתיעוד טוב יותר</li>
+                <li>בדוק את הסיכום לפני סיום האירוע</li>
+                <li>מדבקות יופקו אוטומטית לפריטים מושבתים</li>
+              </ul>
+            </div>
+
+            <button
+              onClick={() => setShowHelp(false)}
+              style={{
+                width: '100%',
+                background: '#10b981',
+                color: 'white',
+                border: 'none',
+                padding: '0.75rem',
+                borderRadius: '8px',
+                fontSize: '1rem',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+            >
+              הבנתי!
+            </button>
           </div>
         </div>
       )}

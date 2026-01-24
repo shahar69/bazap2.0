@@ -137,7 +137,7 @@ public class EventService : IEventService
         return await GetEventAsync(id);
     }
 
-    public async Task RemoveItemFromEventAsync(int id, int eventItemId)
+    public async Task<EventDto> RemoveItemFromEventAsync(int id, int eventItemId)
     {
         var evt = await _context.Events.FindAsync(id) ?? throw new KeyNotFoundException($"Event {id} not found");
         var eventItem = await _context.EventItems.FindAsync(eventItemId) ?? throw new KeyNotFoundException($"EventItem {eventItemId} not found");
@@ -147,6 +147,9 @@ public class EventService : IEventService
 
         _context.EventItems.Remove(eventItem);
         await _context.SaveChangesAsync();
+        
+        _logger.LogInformation("Removed EventItem {EventItemId} from Event {EventId}", eventItemId, id);
+        return await GetEventAsync(id);
     }
 
     public async Task CompleteEventAsync(int id)

@@ -8,7 +8,7 @@ public interface IEventService
     Task<EventDto> CreateEventAsync(CreateEventRequest request, int userId);
     Task<EventDto> GetEventAsync(int id);
     Task<EventDto> AddItemToEventAsync(int id, AddItemToEventRequest request);
-    Task RemoveItemFromEventAsync(int id, int eventItemId);
+    Task<EventDto> RemoveItemFromEventAsync(int id, int eventItemId);
     Task CompleteEventAsync(int id);
     Task SubmitEventForInspectionAsync(int id);
     Task<List<EventDto>> ListEventsAsync(int userId, EventStatus? status);

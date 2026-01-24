@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { eventApi, itemSearchApi } from '../services/apiClient';
 import '../styles/warehouse.css';
 
@@ -6,6 +6,12 @@ interface Alert {
   type: 'success' | 'error' | 'warning' | 'info';
   message: string;
   id: string;
+}
+
+interface QuickAddModal {
+  visible: boolean;
+  item: any;
+  quantity: number;
 }
 
 const ReceivingPage: React.FC = () => {
@@ -18,15 +24,51 @@ const ReceivingPage: React.FC = () => {
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [quickAddModal, setQuickAddModal] = useState<QuickAddModal>({ visible: false, item: null, quantity: 1 });
+  const [showHelp, setShowHelp] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchDebounceRef = useRef<any>(null);
 
   useEffect(() => {
     loadRecentItems();
-  }, []);
+    
+    // Global keyboard shortcuts
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Help modal: ? or H
+      if ((e.key === '?' || e.key.toLowerCase() === 'h') && !e.ctrlKey && !e.altKey) {
+        if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          setShowHelp(prev => !prev);
+        }
+      }
+      // Focus search: F or /
+      if ((e.key === 'f' || e.key === '/') && !e.ctrlKey && !e.altKey && event) {
+        if (document.activeElement?.tagName !== 'INPUT') {
+          e.preventDefault();
+          searchInputRef.current?.focus();
+        }
+      }
+      // Escape: close modals
+      if (e.key === 'Escape') {
+        setShowHelp(false);
+        setQuickAddModal({ visible: false, item: null, quantity: 1 });
+        setSearchQuery('');
+        setSearchResults([]);
+      }
+      // Ctrl+Enter: submit event
+      if (e.ctrlKey && e.key === 'Enter' && event && event.items?.length > 0) {
+        e.preventDefault();
+        completeEvent();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [event]);
 
   const loadRecentItems = async () => {
     try {
-      const items = await itemSearchApi.getRecent(8);
+      const items = await itemSearchApi.getRecent(12);
       setRecentItems(items || []);
     } catch (error) {
       showAlert('error', 'שגיאה בטעינת פריטים אחרונים');
@@ -55,9 +97,10 @@ const ReceivingPage: React.FC = () => {
       setIsCreatingEvent(true);
       const newEvent = await eventApi.createEvent(sourceUnit, receiver, 'Receiving');
       setEvent(newEvent);
-      showAlert('success', `אירוע ${newEvent.number} נוצר בהצלחה`);
+      showAlert('success', `✅ אירוע ${newEvent.number} נוצר בהצלחה`);
       setSourceUnit('');
       setReceiver('');
+      setTimeout(() => searchInputRef.current?.focus(), 100);
     } catch (error: any) {
       showAlert('error', error.response?.data?.message || 'שגיאה ביצירת אירוע');
     } finally {
@@ -65,25 +108,33 @@ const ReceivingPage: React.FC = () => {
     }
   };
 
-  const handleSearch = async (value: string) => {
+  // Debounced search
+  const handleSearch = useCallback((value: string) => {
     setSearchQuery(value);
+    
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
     if (value.trim().length < 1) {
       setSearchResults([]);
       return;
     }
 
-    try {
-      setIsLoading(true);
-      const results = await itemSearchApi.search(value, 10);
-      setSearchResults(results || []);
-    } catch (error) {
-      setSearchResults([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    setIsLoading(true);
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const results = await itemSearchApi.search(value, 15);
+        setSearchResults(results || []);
+      } catch (error) {
+        setSearchResults([]);
+      } finally {
+        setIsLoading(false);
+      }
+    }, 300); // 300ms debounce
+  }, []);
 
-  const addItemToCart = async (item: any) => {
+  const addItemToCart = async (item: any, quantity: number = 1) => {
     if (!event) {
       showAlert('warning', 'יש ליצור אירוע קודם');
       return;
@@ -91,7 +142,7 @@ const ReceivingPage: React.FC = () => {
 
     const existingItem = event.items?.find((ei: any) => ei.itemMakat === item.makat);
     const currentQty = existingItem?.quantity || 0;
-    const newQty = currentQty + 1;
+    const newQty = currentQty + quantity;
 
     try {
       setIsLoading(true);
@@ -106,7 +157,7 @@ const ReceivingPage: React.FC = () => {
         if (existingItem) {
           showAlert('info', `${item.name} - כמות עודכנה ל-${newQty}`);
         } else {
-          showAlert('success', `✅ ${item.name} התווסף לסל`);
+          showAlert('success', `✅ ${item.name} (${quantity}x) התווסף לסל`);
         }
         setSearchQuery('');
         setSearchResults([]);
@@ -120,12 +171,17 @@ const ReceivingPage: React.FC = () => {
   };
 
   const updateItemQty = async (itemId: string, newQty: number) => {
-    if (newQty < 0) return;
+    if (newQty < 1) {
+      // If quantity reaches 0, remove the item
+      removeItem(itemId);
+      return;
+    }
 
     const item = event.items?.find((ei: any) => ei.id.toString() === itemId.toString());
     if (!item) return;
 
     try {
+      setIsLoading(true);
       const updatedEvent = await eventApi.addItem(
         event.id,
         item.itemMakat,
@@ -135,6 +191,8 @@ const ReceivingPage: React.FC = () => {
       setEvent(updatedEvent);
     } catch (error: any) {
       showAlert('error', 'שגיאה בעדכון כמות');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -158,7 +216,7 @@ const ReceivingPage: React.FC = () => {
     }
 
     const confirmed = window.confirm(
-      `לחזק? ${event.items.length} פריטים יישלחו לבחינה`
+      `לשלוח לבחינה? ${event.items.length} פריטים שונים (סה״כ ${totalItems} יחידות)`
     );
     if (!confirmed) return;
 
@@ -170,6 +228,7 @@ const ReceivingPage: React.FC = () => {
         setEvent(null);
         setSourceUnit('');
         setReceiver('');
+        loadRecentItems(); // Refresh recent items
       }, 1500);
     } catch (error: any) {
       showAlert('error', error.response?.data?.message || 'שגיאה בהגשת אירוע לבחינה');
@@ -179,7 +238,7 @@ const ReceivingPage: React.FC = () => {
   };
 
   const resetEvent = () => {
-    const confirmed = window.confirm('בטל את האירוע הנוכחי?');
+    const confirmed = window.confirm('לבטל את האירוע הנוכחי? כל הפריטים יימחקו');
     if (confirmed) {
       setEvent(null);
       setSearchQuery('');
@@ -187,29 +246,14 @@ const ReceivingPage: React.FC = () => {
     }
   };
 
-  const addRecentByQty = async (item: any) => {
-    if (!event) {
-      showAlert('warning', 'יש ליצור אירוע קודם');
-      return;
-    }
+  const openQuickAddModal = (item: any) => {
+    setQuickAddModal({ visible: true, item, quantity: 1 });
+  };
 
-    const qty = prompt(`כמה ${item.name}?`, '1');
-    if (!qty || isNaN(parseInt(qty)) || parseInt(qty) < 1) return;
-
-    try {
-      setIsLoading(true);
-      const updatedEvent = await eventApi.addItem(
-        event.id,
-        item.makat,
-        item.name,
-        parseInt(qty)
-      );
-      setEvent(updatedEvent);
-      showAlert('success', `${item.name} (${qty}x) התווסף לסל`);
-    } catch (error: any) {
-      showAlert('error', 'שגיאה בהוספת פריט');
-    } finally {
-      setIsLoading(false);
+  const confirmQuickAdd = () => {
+    if (quickAddModal.item && quickAddModal.quantity > 0) {
+      addItemToCart(quickAddModal.item, quickAddModal.quantity);
+      setQuickAddModal({ visible: false, item: null, quantity: 1 });
     }
   };
 
@@ -220,6 +264,13 @@ const ReceivingPage: React.FC = () => {
         <div className="warehouse-header">
           <h1>📦 קליטת ציוד</h1>
           <p>יצירת אירוע קליטה חדש</p>
+          <button 
+            className="help-icon-btn"
+            onClick={() => setShowHelp(true)}
+            title="עזרה (לחץ ?)"
+          >
+            ❓
+          </button>
         </div>
 
         {alerts.map(alert => (
@@ -227,6 +278,32 @@ const ReceivingPage: React.FC = () => {
             {alert.message}
           </div>
         ))}
+
+        {showHelp && (
+          <div className="modal-overlay" onClick={() => setShowHelp(false)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+              <h2>📖 עזרה - קיצורי מקלדת</h2>
+              <div className="help-grid">
+                <div><kbd>?</kbd> או <kbd>H</kbd></div><div>פתיחת/סגירת עזרה</div>
+                <div><kbd>F</kbd> או <kbd>/</kbd></div><div>מיקוד בשורת החיפוש</div>
+                <div><kbd>Esc</kbd></div><div>סגירת חלונות וביטול חיפוש</div>
+                <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd></div><div>שליחה מהירה לבחינה</div>
+                <div><kbd>Enter</kbd></div><div>אישור הוספת פריט/כמות</div>
+              </div>
+              <h3 style={{ marginTop: '1.5rem' }}>💡 טיפים</h3>
+              <ul style={{ textAlign: 'right', lineHeight: '1.8' }}>
+                <li>החיפוש מתחיל אוטומטית אחרי הקלדה</li>
+                <li>לחיצה על פריט בתוצאות מוסיפה אותו מיד</li>
+                <li>לחיצה על פריט אחרון פותחת בחירת כמות</li>
+                <li>שימוש ב-+/- בסל לעדכון כמות מהיר</li>
+                <li>כמות 0 מסירה את הפריט מהסל</li>
+              </ul>
+              <button className="modal-close-btn" onClick={() => setShowHelp(false)}>
+                ✖ סגור
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="warehouse-container">
           <div className="warehouse-section" style={{ gridColumn: '1 / -1' }}>
@@ -242,6 +319,7 @@ const ReceivingPage: React.FC = () => {
                     value={sourceUnit}
                     onChange={(e) => setSourceUnit(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && createEvent()}
+                    autoFocus
                   />
                 </div>
                 <div className="form-group">
@@ -261,7 +339,7 @@ const ReceivingPage: React.FC = () => {
                 onClick={createEvent} 
                 disabled={isCreatingEvent || !sourceUnit.trim() || !receiver.trim()}
               >
-                {isCreatingEvent ? '⏳ יצירת אירוע...' : '✅ צור אירוע קליטה'}
+                {isCreatingEvent ? '⏳ יצירת אירוע...' : '✅ צור אירוע קליטה (Enter)'}
               </button>
             </div>
           </div>
@@ -277,7 +355,14 @@ const ReceivingPage: React.FC = () => {
     <div className="warehouse-page">
       <div className="warehouse-header">
         <h1>📦 קליטת ציוד</h1>
-        <p>אירוע פעיל: {event.number}</p>
+        <p>אירוע פעיל: <strong>{event.number}</strong></p>
+        <button 
+          className="help-icon-btn"
+          onClick={() => setShowHelp(true)}
+          title="עזרה (לחץ ?)"
+        >
+          ❓
+        </button>
       </div>
 
       {alerts.map(alert => (
@@ -285,6 +370,64 @@ const ReceivingPage: React.FC = () => {
           {alert.message}
         </div>
       ))}
+
+      {/* Help Modal */}
+      {showHelp && (
+        <div className="modal-overlay" onClick={() => setShowHelp(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <h2>📖 עזרה - קיצורי מקלדת</h2>
+            <div className="help-grid">
+              <div><kbd>?</kbd> או <kbd>H</kbd></div><div>פתיחת/סגירת עזרה</div>
+              <div><kbd>F</kbd> או <kbd>/</kbd></div><div>מיקוד בשורת החיפוש</div>
+              <div><kbd>Esc</kbd></div><div>סגירת חלונות וביטול חיפוש</div>
+              <div><kbd>Ctrl</kbd>+<kbd>Enter</kbd></div><div>שליחה מהירה לבחינה</div>
+            </div>
+            <button className="modal-close-btn" onClick={() => setShowHelp(false)}>
+              ✖ סגור
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Modal */}
+      {quickAddModal.visible && (
+        <div className="modal-overlay" onClick={() => setQuickAddModal({ visible: false, item: null, quantity: 1 })}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <h2>➕ הוסף לסל</h2>
+            <p style={{ marginBottom: '1rem', color: '#666' }}>
+              <strong>{quickAddModal.item?.name}</strong> ({quickAddModal.item?.makat})
+            </p>
+            <div className="form-group">
+              <label>כמות:</label>
+              <input
+                type="number"
+                min="1"
+                value={quickAddModal.quantity}
+                onChange={(e) => setQuickAddModal(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                onKeyPress={(e) => e.key === 'Enter' && confirmQuickAdd()}
+                autoFocus
+                style={{ width: '100%', padding: '0.5rem', fontSize: '1.1rem', textAlign: 'center' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '1rem' }}>
+              <button 
+                className="modal-close-btn" 
+                onClick={() => setQuickAddModal({ visible: false, item: null, quantity: 1 })}
+                style={{ flex: 1 }}
+              >
+                ביטול
+              </button>
+              <button 
+                className="create-event-btn" 
+                onClick={confirmQuickAdd}
+                style={{ flex: 1 }}
+              >
+                ✅ הוסף
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="warehouse-container">
         {/* LEFT COLUMN: Search & Recent */}
@@ -319,34 +462,56 @@ const ReceivingPage: React.FC = () => {
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="חפש לפי מק״ט או שם..."
+                placeholder="חפש לפי מק״ט או שם... (לחץ F או /)"
                 value={searchQuery}
                 onChange={(e) => handleSearch(e.target.value)}
+                autoComplete="off"
               />
+              {searchQuery && (
+                <button 
+                  className="search-clear-btn"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSearchResults([]);
+                    searchInputRef.current?.focus();
+                  }}
+                  title="נקה (Esc)"
+                >
+                  ✖
+                </button>
+              )}
             </div>
 
             {searchQuery && (
               <div className="search-results">
                 {isLoading ? (
-                  <div style={{ padding: '1rem', textAlign: 'center' }}>⏳ חיפוש...</div>
+                  <div style={{ padding: '1rem', textAlign: 'center' }}>⏳ מחפש...</div>
                 ) : searchResults.length === 0 ? (
                   <div style={{ padding: '1rem', textAlign: 'center', color: '#999' }}>
-                    לא נמצאו תוצאות
+                    לא נמצאו תוצאות עבור "{searchQuery}"
                   </div>
                 ) : (
-                  searchResults.map((result) => (
-                    <div
-                      key={result.id}
-                      className="search-result-item"
-                      onClick={() => addItemToCart(result)}
-                    >
-                      <div className="search-result-details">
-                        <span className="search-result-code">{result.makat}</span>
-                        <span className="search-result-name">{result.name}</span>
-                      </div>
-                      <span style={{ fontSize: '1.2rem' }}>➕</span>
+                  <>
+                    <div style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#666', borderBottom: '1px solid #eee' }}>
+                      {searchResults.length} תוצאות
                     </div>
-                  ))
+                    {searchResults.map((result) => (
+                      <div
+                        key={result.id}
+                        className="search-result-item"
+                        onClick={() => addItemToCart(result, 1)}
+                      >
+                        <div className="search-result-details">
+                          <span className="search-result-code">{result.makat}</span>
+                          <span className="search-result-name">{result.name}</span>
+                          {result.groupName && (
+                            <span className="search-result-group">{result.groupName}</span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: '1.3rem', color: '#10b981' }}>➕</span>
+                      </div>
+                    ))}
+                  </>
                 )}
               </div>
             )}
@@ -360,11 +525,12 @@ const ReceivingPage: React.FC = () => {
                   <button
                     key={item.id}
                     className="recent-item-btn"
-                    onClick={() => addRecentByQty(item)}
-                    title={item.name}
+                    onClick={() => openQuickAddModal(item)}
+                    title={`${item.name} - לחץ לבחירת כמות`}
                   >
                     <span className="recent-item-code">{item.makat}</span>
                     <span className="recent-item-name">{item.name}</span>
+                    <span className="recent-item-plus">+</span>
                   </button>
                 ))}
               </div>
@@ -380,8 +546,8 @@ const ReceivingPage: React.FC = () => {
             <div className="empty-state">
               <div className="empty-state-icon">📭</div>
               <p>הסל ריק</p>
-              <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
-                חפש פריטים או בחר מהאחרונים
+              <p style={{ fontSize: '0.9rem', marginTop: '0.5rem', color: '#999' }}>
+                חפש פריטים או בחר מהאחרונים להתחלה
               </p>
             </div>
           ) : (
@@ -390,8 +556,8 @@ const ReceivingPage: React.FC = () => {
                 <thead>
                   <tr>
                     <th style={{ width: '25%' }}>מק״ט</th>
-                    <th style={{ width: '40%' }}>פריט</th>
-                    <th style={{ width: '20%' }}>כמות</th>
+                    <th style={{ width: '35%' }}>פריט</th>
+                    <th style={{ width: '25%' }}>כמות</th>
                     <th style={{ width: '15%' }}>פעולה</th>
                   </tr>
                 </thead>
@@ -407,14 +573,25 @@ const ReceivingPage: React.FC = () => {
                           <button 
                             className="qty-btn"
                             onClick={() => updateItemQty(item.id, item.quantity - 1)}
-                            disabled={item.quantity <= 0}
+                            title="הפחת (0 = מחק)"
                           >
                             −
                           </button>
-                          <span className="qty-input">{item.quantity}</span>
+                          <input
+                            type="number"
+                            className="qty-input"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 0;
+                              if (val >= 0) updateItemQty(item.id, val);
+                            }}
+                            min="0"
+                            style={{ width: '50px', textAlign: 'center', border: '1px solid #ddd', borderRadius: '4px' }}
+                          />
                           <button 
                             className="qty-btn"
                             onClick={() => updateItemQty(item.id, item.quantity + 1)}
+                            title="הוסף"
                           >
                             +
                           </button>
@@ -425,6 +602,7 @@ const ReceivingPage: React.FC = () => {
                           className="delete-btn"
                           onClick={() => removeItem(item.id.toString())}
                           disabled={isLoading}
+                          title="מחק פריט"
                         >
                           🗑️
                         </button>
@@ -445,7 +623,7 @@ const ReceivingPage: React.FC = () => {
                 </div>
                 <div className="summary-total">
                   <span>✅ מוכן לשליחה</span>
-                  <span>{event.items.length} פריטים</span>
+                  <span>{event.items.length} פריטים • {totalItems} יחידות</span>
                 </div>
               </div>
 
@@ -454,6 +632,7 @@ const ReceivingPage: React.FC = () => {
                   className="reset-btn"
                   onClick={resetEvent}
                   disabled={isLoading}
+                  title="ביטול מלא של האירוע"
                 >
                   ❌ ביטול
                 </button>
@@ -461,6 +640,7 @@ const ReceivingPage: React.FC = () => {
                   className="complete-btn"
                   onClick={completeEvent}
                   disabled={isLoading || event.items.length === 0}
+                  title="שלח לבחינה (Ctrl+Enter)"
                 >
                   {isLoading ? '⏳ שליחה...' : '✅ שלח לבחינה'}
                 </button>
