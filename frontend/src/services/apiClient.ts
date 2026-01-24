@@ -126,6 +126,19 @@ export const eventApi = {
       }
     });
   },
+
+  getAllEvents: async () => {
+    return tracer.startActiveSpan('eventApi.getAllEvents', async (span) => {
+      try {
+        const response = await api.get('/events/list');
+        span.setAttribute('events.count', response.data?.length || 0);
+        return response.data;
+      } catch (error) {
+        span.recordException(error as Error);
+        throw error;
+      }
+    });
+  },
 };
 
 export const itemSearchApi = {

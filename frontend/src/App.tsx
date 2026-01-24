@@ -6,13 +6,14 @@ import { ItemManagementPage } from './pages/ItemManagementPage';
 import { HistoryPage } from './pages/HistoryPage';
 import ReceivingPage from './pages/ReceivingPage';
 import InspectionPage from './pages/InspectionPage';
+import DashboardPage from './pages/DashboardPage';
 import './styles/app.css';
 
-type PageType = 'receipt' | 'items' | 'history' | 'receiving' | 'inspection';
+type PageType = 'dashboard' | 'receipt' | 'items' | 'history' | 'receiving' | 'inspection';
 
 const App: React.FC = () => {
   const { user, logout } = useAuth();
-  const [currentPage, setCurrentPage] = useState<PageType>('receipt');
+  const [currentPage, setCurrentPage] = useState<PageType>('dashboard');
 
   if (!user) {
     return <LoginPage />;
@@ -20,6 +21,8 @@ const App: React.FC = () => {
 
   const renderPage = () => {
     switch (currentPage) {
+      case 'dashboard':
+        return <DashboardPage />;
       case 'receipt':
         return <EquipmentReceiptPage />;
       case 'items':
@@ -31,7 +34,7 @@ const App: React.FC = () => {
       case 'inspection':
         return <InspectionPage />;
       default:
-        return <EquipmentReceiptPage />;
+        return <DashboardPage />;
     }
   };
 
@@ -45,10 +48,10 @@ const App: React.FC = () => {
           </div>
           <nav className="header-nav">
             <button
-              onClick={() => setCurrentPage('receipt')}
-              className={`nav-btn ${currentPage === 'receipt' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('dashboard')}
+              className={`nav-btn ${currentPage === 'dashboard' ? 'active' : ''}`}
             >
-              קבלת ציוד (ישן)
+              🎯 מפקדה
             </button>
             <button
               onClick={() => setCurrentPage('receiving')}
@@ -63,16 +66,16 @@ const App: React.FC = () => {
               🔍 בחינה
             </button>
             <button
-              onClick={() => setCurrentPage('items')}
-              className={`nav-btn ${currentPage === 'items' ? 'active' : ''}`}
-            >
-              ניהול פריטים
-            </button>
-            <button
               onClick={() => setCurrentPage('history')}
               className={`nav-btn ${currentPage === 'history' ? 'active' : ''}`}
             >
-              היסטוריה
+              📊 היסטוריה
+            </button>
+            <button
+              onClick={() => setCurrentPage('items')}
+              className={`nav-btn ${currentPage === 'items' ? 'active' : ''}`}
+            >
+              🛠️ ניהול פריטים
             </button>
             <div className="user-info">
               👤 {user.username}
