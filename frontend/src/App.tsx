@@ -4,9 +4,11 @@ import { LoginPage } from './pages/LoginPage';
 import { EquipmentReceiptPage } from './pages/EquipmentReceiptPage';
 import { ItemManagementPage } from './pages/ItemManagementPage';
 import { HistoryPage } from './pages/HistoryPage';
+import ReceivingPage from './pages/ReceivingPage';
+import InspectionPage from './pages/InspectionPage';
 import './styles/app.css';
 
-type PageType = 'receipt' | 'items' | 'history';
+type PageType = 'receipt' | 'items' | 'history' | 'receiving' | 'inspection';
 
 const App: React.FC = () => {
   const { user, logout } = useAuth();
@@ -24,6 +26,10 @@ const App: React.FC = () => {
         return <ItemManagementPage />;
       case 'history':
         return <HistoryPage />;
+      case 'receiving':
+        return <ReceivingPage />;
+      case 'inspection':
+        return <InspectionPage />;
       default:
         return <EquipmentReceiptPage />;
     }
@@ -49,7 +55,33 @@ const App: React.FC = () => {
                   borderRadius: '4px'
                 }}
               >
-                קבלת ציוד
+                קבלת ציוד (ישן)
+              </button>
+              <button
+                onClick={() => setCurrentPage('receiving')}
+                style={{
+                  background: currentPage === 'receiving' ? '#3498db' : 'transparent',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 15px',
+                  cursor: 'pointer',
+                  borderRadius: '4px'
+                }}
+              >
+                📦 קליטה
+              </button>
+              <button
+                onClick={() => setCurrentPage('inspection')}
+                style={{
+                  background: currentPage === 'inspection' ? '#3498db' : 'transparent',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 15px',
+                  cursor: 'pointer',
+                  borderRadius: '4px'
+                }}
+              >
+                🔍 בחינה
               </button>
               <button
                 onClick={() => setCurrentPage('items')}
