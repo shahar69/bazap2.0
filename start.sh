@@ -18,7 +18,7 @@ fi
 
 # Check if Node.js is installed
 if ! command -v node &> /dev/null; then
-    echo "ERROR: Node.js not found. Please install Node.js 18+ and npm."
+    echo "ERROR: Node.js not found. Please install Node.js 18+ and ndsapm."
     echo "Download from: https://nodejs.org/"
     exit 1
 fi
