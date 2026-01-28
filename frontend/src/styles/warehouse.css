@@ -438,11 +438,13 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  overflow-x: auto; /* Prevent layout blow-up when content is wide */
 }
 
 .cart-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed; /* Lock columns to widths to avoid new columns appearing */
   background: white;
 }
 
@@ -457,12 +459,16 @@
   color: var(--dark);
   border-bottom: 2px solid var(--gray-border);
   font-size: 0.95rem;
+  white-space: nowrap;
 }
 
 .cart-table td {
   padding: 1rem;
   border-bottom: 1px solid var(--gray-border);
   color: var(--dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cart-table tbody tr {
