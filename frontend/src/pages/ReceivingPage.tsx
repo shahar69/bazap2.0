@@ -182,13 +182,37 @@ const ReceivingPage: React.FC = () => {
 
     try {
       setIsLoading(true);
-      const updatedEvent = await eventApi.addItem(
-        event.id,
-        item.itemMakat,
-        item.itemName,
-        newQty
-      );
-      setEvent(updatedEvent);
+      // Update the quantity by removing old and adding new
+      // Calculate the difference to add/remove
+      const quantityDifference = newQty - item.quantity;
+      
+      let updatedEvent;
+      if (quantityDifference > 0) {
+        // Add more items
+        updatedEvent = await eventApi.addItem(
+          event.id,
+          item.itemMakat,
+          item.itemName,
+          quantityDifference
+        );
+      } else if (quantityDifference < 0) {
+        // Reduce items - remove and re-add with new quantity
+        await eventApi.removeItem(event.id, item.id);
+        updatedEvent = await eventApi.addItem(
+          event.id,
+          item.itemMakat,
+          item.itemName,
+          newQty
+        );
+      } else {
+        // No change needed
+        return;
+      }
+      
+      if (updatedEvent) {
+        setEvent(updatedEvent);
+        showAlert('info', `${item.itemName} - כמות עודכנה ל-${newQty}`);
+      }
     } catch (error: any) {
       showAlert('error', 'שגיאה בעדכון כמות');
     } finally {

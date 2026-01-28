@@ -54,11 +54,12 @@ const DashboardPage: React.FC = () => {
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    const refreshTimer = setInterval(() => loadDashboardData(), 30000); // Refresh every 30 seconds
+    const refreshTimer = setInterval(() => loadDashboardData(), 15000); // Refresh every 15 seconds
     
     return () => {
       clearInterval(timer);
@@ -68,6 +69,7 @@ const DashboardPage: React.FC = () => {
 
   const loadDashboardData = async () => {
     try {
+      setRefreshing(true);
       const events: EventDto[] = await eventApi.getAllEvents();
       
       // Calculate stats
@@ -109,7 +111,7 @@ const DashboardPage: React.FC = () => {
       // Recent activity
       const recent = events
         .sort((a: EventDto, b: EventDto) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime())
-        .slice(0, 10)
+        .slice(0, 15)
         .map((e: EventDto) => ({
           eventNumber: e.eventNumber,
           eventType: getEventTypeName(e.eventType),
@@ -123,6 +125,8 @@ const DashboardPage: React.FC = () => {
     } catch (error) {
       console.error('שגיאה בטעינת נתוני דשבורד:', error);
       setLoading(false);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -141,21 +145,25 @@ const DashboardPage: React.FC = () => {
     return total > 0 ? ((stats.totalPassed / total) * 100).toFixed(1) : '0';
   };
 
-  if (loading) {
-    return <div className="dashboard-loading">⏳ טוען נתונים...</div>;
-  }
-
   return (
     <div className="dashboard-container">
       <div className="dashboard-header">
         <div className="dashboard-title">
           <h1>🎯 לוח הבקרה של המפקד</h1>
-          <p className="dashboard-subtitle">מעקב ובקרה בזמן אמת</p>
+          <p className="dashboard-subtitle">מעקב ובקרה בזמן אמת • ניטור מלא של ציוד</p>
         </div>
         <div className="dashboard-time">
           <div className="time-display">{currentTime.toLocaleTimeString('he-IL')}</div>
           <div className="date-display">{currentTime.toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
         </div>
+        <button 
+          className="refresh-btn"
+          onClick={() => loadDashboardData()}
+          disabled={refreshing}
+          title="רענן נתונים (כל 15 שניות)"
+        >
+          {refreshing ? '⟳' : '🔄'}
+        </button>
       </div>
 
       <div className="stats-grid">
@@ -226,11 +234,11 @@ const DashboardPage: React.FC = () => {
 
       <div className="dashboard-charts">
         <div className="chart-card">
-          <h3>📈 ביצועים</h3>
+          <h3>📈 ביצועים כללי</h3>
           <div className="performance-bars">
             <div className="performance-item">
               <div className="performance-label">
-                <span>פריטים עברו</span>
+                <span>פריטים עברו בדיקה</span>
                 <span className="performance-value">{stats.totalPassed}</span>
               </div>
               <div className="progress-bar">
@@ -266,11 +274,24 @@ const DashboardPage: React.FC = () => {
                 ></div>
               </div>
             </div>
+
+            <div className="performance-item">
+              <div className="performance-label">
+                <span>אירועים פעילים</span>
+                <span className="performance-value">{stats.activeEvents}</span>
+              </div>
+              <div className="progress-bar">
+                <div 
+                  className="progress-fill progress-warning" 
+                  style={{ width: `${(stats.activeEvents / (stats.totalEvents || 1)) * 100}%` }}
+                ></div>
+              </div>
+            </div>
           </div>
         </div>
 
         <div className="chart-card">
-          <h3>🔥 פעילות אחרונה</h3>
+          <h3>🔥 פעילות אחרונה ({recentActivity.length})</h3>
           <div className="activity-list">
             {recentActivity.length === 0 ? (
               <div className="no-activity">אין פעילות אחרונה</div>
@@ -285,7 +306,7 @@ const DashboardPage: React.FC = () => {
                       {activity.eventType} - {activity.eventNumber}
                     </div>
                     <div className="activity-meta">
-                      {activity.createdDate} • {activity.itemsCount} פריטים • {activity.status}
+                      {activity.createdDate} • {activity.itemsCount} פריטים • <span className={`status-${activity.status === 'פעיל' ? 'active' : 'completed'}`}>{activity.status}</span>
                     </div>
                   </div>
                 </div>
@@ -302,11 +323,15 @@ const DashboardPage: React.FC = () => {
         </div>
         <div className="footer-stat">
           <span className="footer-icon">🔄</span>
-          <span>רענון אוטומטי כל 30 שניות</span>
+          <span>רענון אוטומטי כל 15 שניות</span>
+        </div>
+        <div className="footer-stat">
+          <span className="footer-icon">📡</span>
+          <span>מצב: {refreshing ? '🔄 מעדכן...' : '✓ מעודכן'}</span>
         </div>
         <div className="footer-stat">
           <span className="footer-icon">🚀</span>
-          <span>BAZAP 2.0 Commander Dashboard</span>
+          <span>BAZAP 2.0 Commander Dashboard v2.1</span>
         </div>
       </div>
     </div>

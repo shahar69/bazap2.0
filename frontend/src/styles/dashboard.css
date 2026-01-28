@@ -4,6 +4,7 @@
   background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
   min-height: 100vh;
   animation: fadeIn 0.5s ease-in;
+  direction: rtl;
 }
 
 /* Header */
@@ -13,9 +14,12 @@
   align-items: center;
   margin-bottom: 32px;
   padding: 24px;
-  background: white;
+  background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(250,251,252,0.95) 100%);
   border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+  border: 1px solid rgba(102, 126, 234, 0.1);
+  backdrop-filter: blur(10px);
+  gap: 24px;
 }
 
 .dashboard-title h1 {
@@ -36,6 +40,7 @@
 
 .dashboard-time {
   text-align: left;
+  min-width: 180px;
 }
 
 .time-display {
@@ -44,6 +49,7 @@
   font-family: 'Courier New', monospace;
   color: #1f2937;
   line-height: 1;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 .date-display {
@@ -51,6 +57,34 @@
   color: #6b7280;
   margin-top: 4px;
   font-weight: 500;
+}
+
+/* Refresh Button */
+.refresh-btn {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.refresh-btn:hover:not(:disabled) {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Stats Grid */
@@ -263,6 +297,10 @@
   background: linear-gradient(90deg, #3b82f6, #2563eb);
 }
 
+.progress-warning {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
 /* Activity List */
 .activity-list {
   display: flex;
@@ -326,6 +364,30 @@
 .activity-meta {
   font-size: 12px;
   color: #6b7280;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.status-active {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #dbeafe;
+  color: #0284c7;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.status-completed {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #dcfce7;
+  color: #166534;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .no-activity {
@@ -337,13 +399,14 @@
 
 /* Footer */
 .dashboard-footer {
-  background: white;
+  background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(250,251,252,0.95) 100%);
   border-radius: 16px;
   padding: 20px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  border: 1px solid rgba(102, 126, 234, 0.1);
   flex-wrap: wrap;
   gap: 16px;
 }
