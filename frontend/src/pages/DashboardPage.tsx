@@ -52,7 +52,6 @@ const DashboardPage: React.FC = () => {
     todayInspections: 0,
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
-  const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [refreshing, setRefreshing] = useState(false);
 
@@ -121,10 +120,8 @@ const DashboardPage: React.FC = () => {
         }));
       
       setRecentActivity(recent);
-      setLoading(false);
     } catch (error) {
       console.error('שגיאה בטעינת נתוני דשבורד:', error);
-      setLoading(false);
     } finally {
       setRefreshing(false);
     }
