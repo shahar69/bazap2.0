@@ -291,7 +291,7 @@ const DashboardPage: React.FC = () => {
           <div className="kpi-meta">מחושב לטווח הנבחר</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-label">אירועים פתוחים > 48 שעות</div>
+          <div className="kpi-label">אירועים פתוחים מעל 48 שעות</div>
           <div className="kpi-value warning">{agingActiveEvents.length}</div>
           <div className="kpi-meta">דורש טיפול מפקדה</div>
         </div>
