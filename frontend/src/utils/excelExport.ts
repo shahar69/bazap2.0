@@ -145,6 +145,38 @@ export const exportInspectionsToExcel = (events: any[], fileName: string = 'בד
   });
 };
 
+/**
+ * Export items catalog to Excel
+ */
+export const exportItemsToExcel = (items: any[], fileName: string = 'פריטים.xlsx') => {
+  const data = items.map((item) => ({
+    'שם פריט': item.name,
+    'קוד': item.code || '-',
+    'כמות במלאי': item.quantityInStock ?? 0,
+    'סטטוס': item.isActive === false ? 'לא פעיל' : 'פעיל',
+    'נוצר בתאריך': item.createdAt ? formatDateHebrew(item.createdAt) : '-',
+  }));
+
+  exportToExcel({
+    title: 'ייצוא פריטים',
+    fileName,
+    sheets: [
+      {
+        name: 'פריטים',
+        data,
+      },
+      {
+        name: 'סטטיסטיקה',
+        data: [
+          { 'מדד': 'סה״כ פריטים', 'ערך': items.length },
+          { 'מדד': 'פעילים', 'ערך': items.filter((i) => i.isActive !== false).length },
+          { 'מדד': 'לא פעילים', 'ערך': items.filter((i) => i.isActive === false).length },
+        ],
+      },
+    ],
+  });
+};
+
 // Helper functions
 function getEventTypeName(type: number): string {
   const types: { [key: number]: string } = {

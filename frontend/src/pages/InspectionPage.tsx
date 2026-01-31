@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { eventApi, inspectionApi } from '../services/apiClient';
 import '../styles/inspection.css';
 
@@ -24,6 +24,12 @@ const InspectionPage: React.FC = () => {
   const [showSummary, setShowSummary] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [eventSearch, setEventSearch] = useState('');
+  const [eventSort, setEventSort] = useState<'date' | 'items'>('date');
+  const [itemSearch, setItemSearch] = useState('');
+  const [itemFilter, setItemFilter] = useState<'all' | 'pending' | 'passed' | 'disabled'>('pending');
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
+  const [disableMode, setDisableMode] = useState<'single' | 'bulk'>('single');
 
   useEffect(() => {
     loadEvents();
@@ -89,6 +95,9 @@ const InspectionPage: React.FC = () => {
     setCurrentEvent({ ...event, items: orderedItems });
     const pendingIndex = orderedItems.findIndex(i => i.inspectionStatus === 0);
     setCurrentItemIndex(pendingIndex >= 0 ? pendingIndex : 0);
+    setSelectedItemIds(new Set());
+    setItemSearch('');
+    setItemFilter('pending');
     showAlert('success', `אירוע ${event.number} נבחר`);
   };
 
@@ -103,6 +112,62 @@ const InspectionPage: React.FC = () => {
   };
 
   const { completed, pending } = recalcProgress(currentEvent?.items || []);
+
+  const filteredEvents = useMemo(() => {
+    const query = eventSearch.trim().toLowerCase();
+    const list = [...events].filter((event) => {
+      if (!query) return true;
+      return [event.number, event.sourceUnit, event.receiver]
+        .filter(Boolean)
+        .some((value: string) => value.toLowerCase().includes(query));
+    });
+
+    list.sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.createdDate || 0).getTime();
+      const dateB = new Date(b.createdAt || b.createdDate || 0).getTime();
+      if (eventSort === 'items') {
+        return (b.items?.length || 0) - (a.items?.length || 0);
+      }
+      return dateB - dateA;
+    });
+
+    return list;
+  }, [events, eventSearch, eventSort]);
+
+  const filteredItems = useMemo(() => {
+    const query = itemSearch.trim().toLowerCase();
+    const items = currentEvent?.items || [];
+    return items.filter((item: any) => {
+      if (itemFilter === 'pending' && item.inspectionStatus !== 0) return false;
+      if (itemFilter === 'passed' && item.inspectionStatus !== 1) return false;
+      if (itemFilter === 'disabled' && item.inspectionStatus !== 2) return false;
+      if (!query) return true;
+      return [item.itemMakat, item.itemName]
+        .filter(Boolean)
+        .some((value: string) => value.toLowerCase().includes(query));
+    });
+  }, [currentEvent, itemFilter, itemSearch]);
+
+  const toggleItemSelection = (itemId: number) => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllPending = () => {
+    const pendingIds = (currentEvent?.items || [])
+      .filter((item: any) => item.inspectionStatus === 0)
+      .map((item: any) => item.id);
+    setSelectedItemIds(new Set(pendingIds));
+  };
+
+  const clearSelection = () => setSelectedItemIds(new Set());
 
   const handlePassDecision = async () => {
     if (!currentItem) return;
@@ -174,6 +239,78 @@ const InspectionPage: React.FC = () => {
       setNotes('');
     } catch (error: any) {
       showAlert('error', error.response?.data?.message || 'שגיאה בהקלטת החלטה');
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handleBulkPassDecision = async () => {
+    if (selectedItemIds.size === 0) {
+      showAlert('warning', 'בחר לפחות פריט אחד');
+      return;
+    }
+
+    try {
+      setIsPrinting(true);
+      const ids = Array.from(selectedItemIds);
+      for (const itemId of ids) {
+        await inspectionApi.makeDecision(itemId, 'Pass');
+      }
+
+      setCurrentEvent((prev: any) => {
+        if (!prev) return prev;
+        const updatedItems = prev.items.map((item: any) =>
+          ids.includes(item.id)
+            ? { ...item, inspectionStatus: 1, disableReason: null }
+            : item
+        );
+        return { ...prev, items: updatedItems };
+      });
+
+      showAlert('success', `✅ ${ids.length} פריטים סומנו כתקינים`);
+      clearSelection();
+    } catch (error: any) {
+      showAlert('error', error.response?.data?.message || 'שגיאה בעדכון החלטות');
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handleBulkDisableDecision = async () => {
+    if (!selectedReason) {
+      showAlert('warning', 'בחר סיבה להשבתה');
+      return;
+    }
+
+    if (selectedItemIds.size === 0) {
+      showAlert('warning', 'בחר לפחות פריט אחד');
+      return;
+    }
+
+    try {
+      setIsPrinting(true);
+      const ids = Array.from(selectedItemIds);
+      for (const itemId of ids) {
+        await inspectionApi.makeDecision(itemId, 'Disabled', selectedReason, notes || undefined);
+      }
+
+      setCurrentEvent((prev: any) => {
+        if (!prev) return prev;
+        const updatedItems = prev.items.map((item: any) =>
+          ids.includes(item.id)
+            ? { ...item, inspectionStatus: 2, disableReason: selectedReason }
+            : item
+        );
+        return { ...prev, items: updatedItems };
+      });
+
+      showAlert('success', `❌ ${ids.length} פריטים הושבתו`);
+      setShowDisableModal(false);
+      setSelectedReason(null);
+      setNotes('');
+      clearSelection();
+    } catch (error: any) {
+      showAlert('error', error.response?.data?.message || 'שגיאה בעדכון החלטות');
     } finally {
       setIsPrinting(false);
     }
@@ -280,10 +417,26 @@ const InspectionPage: React.FC = () => {
           ) : (
             <div className="events-list-container">
               <div className="events-list-header">
-                <h2>🎯 אירועים בהמתנה: {events.length}</h2>
+                <h2>🎯 אירועים בהמתנה: {filteredEvents.length}</h2>
+                <div className="events-toolbar">
+                  <input
+                    className="events-search"
+                    placeholder="חפש לפי מספר אירוע, יחידה או מקבל..."
+                    value={eventSearch}
+                    onChange={(e) => setEventSearch(e.target.value)}
+                  />
+                  <select
+                    className="events-sort"
+                    value={eventSort}
+                    onChange={(e) => setEventSort(e.target.value as 'date' | 'items')}
+                  >
+                    <option value="date">מיון לפי תאריך</option>
+                    <option value="items">מיון לפי פריטים</option>
+                  </select>
+                </div>
               </div>
               <div className="events-list">
-                {events.map((event) => (
+                {filteredEvents.map((event) => (
                   <div
                     key={event.id}
                     className="event-card"
@@ -303,7 +456,7 @@ const InspectionPage: React.FC = () => {
                       </p>
                       <p>
                         <strong>תאריך:</strong>{' '}
-                        {new Date(event.createdAt).toLocaleDateString('he-IL')}
+                        {new Date(event.createdAt || event.createdDate).toLocaleDateString('he-IL')}
                       </p>
                     </div>
 
@@ -402,123 +555,207 @@ const InspectionPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Inspection Item */}
-        {currentItem && (
-          <div className="inspection-item">
-            <div className="item-header">
-              <h2>{currentItem.itemName}</h2>
-              <span className="item-status-badge">בבדיקה</span>
+        <div className="inspection-layout">
+          <aside className="inspection-sidebar">
+            <div className="sidebar-header">
+              <div>
+                <h3>רשימת פריטים</h3>
+                <span className="sidebar-subtitle">נבחרו {selectedItemIds.size} פריטים</span>
+              </div>
+              <div className="sidebar-actions">
+                <button className="mini-btn" onClick={selectAllPending}>בחר ממתינים</button>
+                <button className="mini-btn" onClick={clearSelection}>נקה</button>
+              </div>
             </div>
 
-            <div className="item-details">
-              <div className="detail-row">
-                <div className="detail-label">📦 מק״ט</div>
-                <div className="detail-value makat">{currentItem.itemMakat}</div>
-              </div>
+            <input
+              className="sidebar-search"
+              placeholder="חיפוש פריט..."
+              value={itemSearch}
+              onChange={(e) => setItemSearch(e.target.value)}
+            />
 
-              <div className="detail-row">
-                <div className="detail-label">📝 שם פריט</div>
-                <div className="detail-value">{currentItem.itemName}</div>
-              </div>
-
-              <div className="detail-row">
-                <div className="detail-label">🔢 כמות</div>
-                <div className="detail-value">{currentItem.quantity}</div>
-              </div>
-
-              {currentItem.inspectionStatus !== 0 && (
-                <div className="detail-row">
-                  <div className="detail-label">⚡ סטטוס בדיקה</div>
-                  <div className="detail-value">
-                    {currentItem.inspectionStatus === 1 ? '✅ תקין' : '❌ הושבת'}
-                  </div>
-                </div>
-              )}
-
-              {currentItem.addedAt && (
-                <div className="detail-row">
-                  <div className="detail-label">🕐 זמן הוספה</div>
-                  <div className="detail-value">
-                    {new Date(currentItem.addedAt).toLocaleTimeString('he-IL')}
-                  </div>
-                </div>
-              )}
+            <div className="item-filters">
+              <button className={itemFilter === 'pending' ? 'active' : ''} onClick={() => setItemFilter('pending')}>ממתינים</button>
+              <button className={itemFilter === 'passed' ? 'active' : ''} onClick={() => setItemFilter('passed')}>תקינים</button>
+              <button className={itemFilter === 'disabled' ? 'active' : ''} onClick={() => setItemFilter('disabled')}>מושבתים</button>
+              <button className={itemFilter === 'all' ? 'active' : ''} onClick={() => setItemFilter('all')}>הכל</button>
             </div>
 
-            <div className="decision-section">
-              <h3>👉 החלטת בדיקה</h3>
-              
-              <textarea
-                placeholder="הערות לפריט זה (לא חובה)"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                style={{ 
-                  width: '100%', 
-                  minHeight: '60px', 
-                  marginBottom: '1rem',
-                  padding: '0.75rem',
-                  borderRadius: '8px',
-                  border: '2px solid #e5e7eb',
-                  fontSize: '0.95rem',
-                  fontFamily: 'inherit'
+            <div className="bulk-actions">
+              <button className="bulk-pass" onClick={handleBulkPassDecision} disabled={isPrinting || selectedItemIds.size === 0}>
+                ✅ תקין לנבחרים
+              </button>
+              <button
+                className="bulk-disable"
+                onClick={() => {
+                  if (selectedItemIds.size === 0) {
+                    showAlert('warning', 'בחר לפחות פריט אחד');
+                    return;
+                  }
+                  setDisableMode('bulk');
+                  setShowDisableModal(true);
                 }}
-                disabled={isPrinting}
-              />
-
-              <div className="decision-buttons">
-                <button
-                  className="pass-btn"
-                  onClick={handlePassDecision}
-                  disabled={isPrinting || showDisableModal}
-                  title="קיצור: 1 או P"
-                >
-                  <span>✅</span>
-                  <span>תקין</span>
-                </button>
-
-                <button
-                  className="fail-btn"
-                  onClick={() => setShowDisableModal(true)}
-                  disabled={isPrinting || showDisableModal}
-                  title="קיצור: 2 או D"
-                >
-                  <span>❌</span>
-                  <span>משהו לא בסדר</span>
-                </button>
-
-                <button
-                  className="batch-btn"
-                  onClick={() => setShowBatchModal(true)}
-                  disabled={isPrinting || pending < 2}
-                  title="קיצור: B"
-                  style={{
-                    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                    color: 'white',
-                    border: 'none',
-                    padding: '1rem 1.5rem',
-                    borderRadius: '12px',
-                    fontSize: '1.1rem',
-                    fontWeight: '600',
-                    cursor: pending < 2 ? 'not-allowed' : 'pointer',
-                    opacity: pending < 2 ? 0.5 : 1,
-                    transition: 'all 0.3s ease',
-                    flex: 1
-                  }}
-                >
-                  <span>🚀</span>
-                  <span>עיבוד אצווה</span>
-                </button>
-              </div>
+                disabled={isPrinting || selectedItemIds.size === 0}
+              >
+                ❌ השבת לנבחרים
+              </button>
             </div>
-          </div>
-        )}
+
+            <div className="item-queue">
+              {filteredItems.map((item: any) => {
+                const originalIndex = currentEvent?.items?.findIndex((i: any) => i.id === item.id) ?? 0;
+                return (
+                  <button
+                    key={item.id}
+                    className={`queue-item ${originalIndex === currentItemIndex ? 'active' : ''} status-${item.inspectionStatus}`}
+                    onClick={() => setCurrentItemIndex(originalIndex)}
+                  >
+                    <input
+                      type="checkbox"
+                      className="queue-checkbox"
+                      checked={selectedItemIds.has(item.id)}
+                      onChange={() => toggleItemSelection(item.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div className="queue-info">
+                      <div className="queue-title">{item.itemName}</div>
+                      <div className="queue-meta">{item.itemMakat} • כמות: {item.quantity}</div>
+                    </div>
+                    <span className="queue-status">
+                      {item.inspectionStatus === 0 && '⏳'}
+                      {item.inspectionStatus === 1 && '✅'}
+                      {item.inspectionStatus === 2 && '❌'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          <section className="inspection-main">
+            {/* Inspection Item */}
+            {currentItem && (
+              <div className="inspection-item">
+                <div className="item-header">
+                  <h2>{currentItem.itemName}</h2>
+                  <span className="item-status-badge">בבדיקה</span>
+                </div>
+
+                <div className="item-details">
+                  <div className="detail-row">
+                    <div className="detail-label">📦 מק״ט</div>
+                    <div className="detail-value makat">{currentItem.itemMakat}</div>
+                  </div>
+
+                  <div className="detail-row">
+                    <div className="detail-label">📝 שם פריט</div>
+                    <div className="detail-value">{currentItem.itemName}</div>
+                  </div>
+
+                  <div className="detail-row">
+                    <div className="detail-label">🔢 כמות</div>
+                    <div className="detail-value">{currentItem.quantity}</div>
+                  </div>
+
+                  {currentItem.inspectionStatus !== 0 && (
+                    <div className="detail-row">
+                      <div className="detail-label">⚡ סטטוס בדיקה</div>
+                      <div className="detail-value">
+                        {currentItem.inspectionStatus === 1 ? '✅ תקין' : '❌ הושבת'}
+                      </div>
+                    </div>
+                  )}
+
+                  {currentItem.addedAt && (
+                    <div className="detail-row">
+                      <div className="detail-label">🕐 זמן הוספה</div>
+                      <div className="detail-value">
+                        {new Date(currentItem.addedAt).toLocaleTimeString('he-IL')}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="decision-section">
+                  <h3>👉 החלטת בדיקה</h3>
+                  
+                  <textarea
+                    placeholder="הערות לפריט זה (לא חובה)"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    style={{ 
+                      width: '100%', 
+                      minHeight: '60px', 
+                      marginBottom: '1rem',
+                      padding: '0.75rem',
+                      borderRadius: '8px',
+                      border: '2px solid #e5e7eb',
+                      fontSize: '0.95rem',
+                      fontFamily: 'inherit'
+                    }}
+                    disabled={isPrinting}
+                  />
+
+                  <div className="decision-buttons">
+                    <button
+                      className="pass-btn"
+                      onClick={handlePassDecision}
+                      disabled={isPrinting || showDisableModal}
+                      title="קיצור: 1 או P"
+                    >
+                      <span>✅</span>
+                      <span>תקין</span>
+                    </button>
+
+                    <button
+                      className="fail-btn"
+                      onClick={() => {
+                        setDisableMode('single');
+                        setShowDisableModal(true);
+                      }}
+                      disabled={isPrinting || showDisableModal}
+                      title="קיצור: 2 או D"
+                    >
+                      <span>❌</span>
+                      <span>משהו לא בסדר</span>
+                    </button>
+
+                    <button
+                      className="batch-btn"
+                      onClick={() => setShowBatchModal(true)}
+                      disabled={isPrinting || pending < 2}
+                      title="קיצור: B"
+                      style={{
+                        background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                        color: 'white',
+                        border: 'none',
+                        padding: '1rem 1.5rem',
+                        borderRadius: '12px',
+                        fontSize: '1.1rem',
+                        fontWeight: '600',
+                        cursor: pending < 2 ? 'not-allowed' : 'pointer',
+                        opacity: pending < 2 ? 0.5 : 1,
+                        transition: 'all 0.3s ease',
+                        flex: 1
+                      }}
+                    >
+                      <span>🚀</span>
+                      <span>עיבוד אצווה</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
 
       {/* Disable Reason Modal */}
       {showDisableModal && (
         <div className="modal-overlay" onClick={() => !isPrinting && setShowDisableModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>🤔 בחר סיבת השבתה</h3>
+            <h3>🤔 בחר סיבת השבתה {disableMode === 'bulk' ? '(לנבחרים)' : ''}</h3>
 
             <textarea
               placeholder="הערות נוספות (לא חובה)"
@@ -623,7 +860,7 @@ const InspectionPage: React.FC = () => {
                   borderColor: '#10b981',
                   flex: 1,
                 }}
-                onClick={handleDisableDecision}
+                onClick={disableMode === 'bulk' ? handleBulkDisableDecision : handleDisableDecision}
                 disabled={!selectedReason || isPrinting}
               >
                 {isPrinting ? '⏳ הדפסה...' : '✅ אישור'}
