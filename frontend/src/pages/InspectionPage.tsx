@@ -30,6 +30,7 @@ const InspectionPage: React.FC = () => {
   const [itemFilter, setItemFilter] = useState<'all' | 'pending' | 'passed' | 'disabled'>('pending');
   const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
   const [disableMode, setDisableMode] = useState<'single' | 'bulk'>('single');
+  const [autoAdvance, setAutoAdvance] = useState(true);
 
   useEffect(() => {
     loadEvents();
@@ -111,6 +112,8 @@ const InspectionPage: React.FC = () => {
     return { total, completed, failed, passed, pending: total - completed };
   };
 
+  const findNextPendingIndex = (items: any[] = []) => items.findIndex(i => i.inspectionStatus === 0);
+
   const { completed, pending } = recalcProgress(currentEvent?.items || []);
 
   const filteredEvents = useMemo(() => {
@@ -190,21 +193,33 @@ const InspectionPage: React.FC = () => {
 
     try {
       setIsPrinting(true);
-      let processed = 0;
-      
-      for (let i = 0; i < batchQuantity && currentItem; i++) {
-        await inspectionApi.makeDecision(currentItem.id, 'Pass', undefined, notes || undefined);
-        processed++;
-        if (i < batchQuantity - 1) {
-          advanceAfterDecision('Pass');
-        }
+      const items = currentEvent?.items || [];
+      const pendingItemsFromIndex = items
+        .slice(currentItemIndex)
+        .filter((item: any) => item.inspectionStatus === 0)
+        .slice(0, batchQuantity);
+
+      for (const item of pendingItemsFromIndex) {
+        await inspectionApi.makeDecision(item.id, 'Pass', undefined, notes || undefined);
       }
-      
-      showAlert('success', `✅ ${processed} פריטים סומנו כתקינים`);
+
+      setCurrentEvent((prev: any) => {
+        if (!prev) return prev;
+        const ids = pendingItemsFromIndex.map((item: any) => item.id);
+        const updatedItems = prev.items.map((item: any) =>
+          ids.includes(item.id) ? { ...item, inspectionStatus: 1 } : item
+        );
+        if (autoAdvance) {
+          const nextPending = findNextPendingIndex(updatedItems);
+          if (nextPending >= 0) setCurrentItemIndex(nextPending);
+        }
+        return { ...prev, items: updatedItems };
+      });
+
+      showAlert('success', `✅ ${pendingItemsFromIndex.length} פריטים סומנו כתקינים`);
       setNotes('');
       setShowBatchModal(false);
       setBatchQuantity(1);
-      advanceAfterDecision('Pass');
     } catch (error: any) {
       showAlert('error', error.response?.data?.message || 'שגיאה בעיבוד אצווה');
     } finally {
@@ -330,11 +345,11 @@ const InspectionPage: React.FC = () => {
           : item
       );
 
-      const nextPendingIndex = updatedItems.findIndex((i: any) => i.inspectionStatus === 0);
+      const nextPendingIndex = findNextPendingIndex(updatedItems);
 
-      if (nextPendingIndex >= 0) {
+      if (autoAdvance && nextPendingIndex >= 0) {
         setCurrentItemIndex(nextPendingIndex);
-      } else {
+      } else if (autoAdvance && nextPendingIndex < 0) {
         showAlert('success', '🎉 סיימת לבחון את כל הפריטים!');
         setTimeout(() => {
           setCurrentEvent(null);
@@ -344,6 +359,16 @@ const InspectionPage: React.FC = () => {
 
       return { ...prev, items: updatedItems };
     });
+  };
+
+  const goNextItem = () => {
+    if (!currentEvent?.items?.length) return;
+    setCurrentItemIndex((prev) => Math.min(prev + 1, currentEvent.items.length - 1));
+  };
+
+  const goPrevItem = () => {
+    if (!currentEvent?.items?.length) return;
+    setCurrentItemIndex((prev) => Math.max(prev - 1, 0));
   };
 
   const downloadAndPrintLabel = (blob: Blob, filename: string) => {
@@ -495,9 +520,47 @@ const InspectionPage: React.FC = () => {
       ))}
 
       <div className="inspection-container">
+        <div className="inspection-controls">
+          <div className="inspection-stats">
+            <div className="stat-card">
+              <span>סה"כ</span>
+              <strong>{totalItems}</strong>
+            </div>
+            <div className="stat-card success">
+              <span>תקינים</span>
+              <strong>{currentEvent?.items?.filter((i: any) => i.inspectionStatus === 1).length || 0}</strong>
+            </div>
+            <div className="stat-card danger">
+              <span>מושבתים</span>
+              <strong>{currentEvent?.items?.filter((i: any) => i.inspectionStatus === 2).length || 0}</strong>
+            </div>
+            <div className="stat-card warning">
+              <span>ממתינים</span>
+              <strong>{pending}</strong>
+            </div>
+          </div>
+
+          <div className="inspection-actions">
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={autoAdvance}
+                onChange={(e) => setAutoAdvance(e.target.checked)}
+              />
+              <span>התקדמות אוטומטית</span>
+            </label>
+          </div>
+        </div>
+
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
           <button className="back-btn" onClick={goBack} disabled={isPrinting}>
             ⬅️ חזור
+          </button>
+          <button className="nav-btn" onClick={goPrevItem} disabled={currentItemIndex === 0}>
+            ⏮ קודם
+          </button>
+          <button className="nav-btn" onClick={goNextItem} disabled={currentItemIndex >= totalItems - 1}>
+            הבא ⏭
           </button>
           <button 
             className="summary-btn" 
