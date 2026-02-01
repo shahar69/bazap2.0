@@ -8,13 +8,10 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure SQLite - use a data directory in the project
-var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Bazap");
-Directory.CreateDirectory(dataDir);
-var dbPath = Path.Combine(dataDir, "bazap.db");
-var connectionString = $"Data Source={dbPath};";
+// Configure SQLite - use a simple in-memory database for now to avoid I/O issues
+// Can be changed later to use a real file-based database
 builder.Services.AddDbContext<BazapContext>(options =>
-    options.UseSqlite(connectionString));
+    options.UseSqlite("Data Source=:memory:"));
 
 // Add JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "super_secret_key_123456789_for_bazap_system_2026";
