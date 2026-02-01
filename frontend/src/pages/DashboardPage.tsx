@@ -44,6 +44,7 @@ const DashboardPage: React.FC = () => {
   const [events, setEvents] = useState<EventDto[]>([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [refreshing, setRefreshing] = useState(false);
   const [dateRange, setDateRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
@@ -62,10 +63,12 @@ const DashboardPage: React.FC = () => {
   const loadDashboardData = async () => {
     try {
       setRefreshing(true);
+      setError('');
       const events: EventDto[] = await eventApi.getAllEvents();
+      console.log('📊 Events loaded:', events?.length || 0);
       setEvents(events || []);
       
-      const recent = events
+      const recent = (events || [])
         .sort((a: EventDto, b: EventDto) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime())
         .slice(0, 15)
         .map((e: EventDto) => ({
@@ -78,8 +81,10 @@ const DashboardPage: React.FC = () => {
       
       setRecentActivity(recent);
       setLoading(false);
-    } catch (error) {
-      console.error('שגיאה בטעינת נתוני דשבורד:', error);
+    } catch (error: any) {
+      const errorMsg = error?.response?.data?.message || error?.message || 'Failed to load dashboard data';
+      console.error('❌ Dashboard error:', errorMsg, error);
+      setError(errorMsg);
       setLoading(false);
     } finally {
       setRefreshing(false);
@@ -185,6 +190,36 @@ const DashboardPage: React.FC = () => {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
   }, [filteredEvents]);
+
+  if (loading) {
+    return (
+      <div className="dashboard-container">
+        <div style={{ textAlign: 'center', padding: '60px 20px', minHeight: '60vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px', animation: 'spin 1s linear infinite' }}>⟳</div>
+          <h2>טוען נתונים...</h2>
+          <p style={{ color: '#666', marginTop: '10px' }}>אנא המתן בזמן שאנחנו אוחזים ביומנים הסביבתיים</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="dashboard-container">
+        <div style={{ textAlign: 'center', padding: '60px 20px', minHeight: '60vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>⚠️</div>
+          <h2>שגיאה בטעינת הנתונים</h2>
+          <p style={{ color: '#d32f2f', marginTop: '10px', marginBottom: '20px' }}>{error}</p>
+          <button 
+            onClick={() => { setLoading(true); setError(''); loadDashboardData(); }}
+            style={{ padding: '10px 20px', backgroundColor: '#2196F3', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}
+          >
+            נסה שוב
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-container">
