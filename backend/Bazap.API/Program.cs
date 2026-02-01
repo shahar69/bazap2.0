@@ -8,13 +8,13 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure SQLite - use /tmp for better permission handling on macOS
-var dbPath = Path.Combine(Path.GetTempPath(), "bazap", "bazap.db");
-Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
-// Disable WAL mode which can cause issues on some filesystems
-var connectionString = $"Data Source={dbPath};Mode=ReadWrite;";
+// Configure SQLite - use a data directory in the project
+var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Bazap");
+Directory.CreateDirectory(dataDir);
+var dbPath = Path.Combine(dataDir, "bazap.db");
+var connectionString = $"Data Source={dbPath};";
 builder.Services.AddDbContext<BazapContext>(options =>
-    options.UseSqlite(connectionString, x => x.UseQuerySplittingBehavior(Microsoft.EntityFrameworkCore.QuerySplittingBehavior.SingleQuery)));
+    options.UseSqlite(connectionString));
 
 // Add JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "super_secret_key_123456789_for_bazap_system_2026";
@@ -83,21 +83,19 @@ try
         var context = scope.ServiceProvider.GetRequiredService<BazapContext>();
         logger.LogInformation("📊 Initializing database...");
         
-        try
+        // Just ensure the database exists, don't delete it
+        context.Database.EnsureCreated();
+        logger.LogInformation("📋 Database tables created");
+        
+        // Seed default data
+        var existingUsers = context.Users.Any();
+        if (!existingUsers)
         {
-            // Just ensure the database exists, don't delete it
-            context.Database.EnsureCreated();
-            logger.LogInformation("📋 Database tables created");
-            
-            // Seed default data
-            var existingUsers = context.Users.Any();
-            if (!existingUsers)
+            var adminPasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123");
+            var adminUser = new Bazap.API.Models.User
             {
-                var adminPasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123");
-                var adminUser = new Bazap.API.Models.User
-                {
-                    Username = "admin",
-                    PasswordHash = adminPasswordHash,
+                Username = "admin",
+                PasswordHash = adminPasswordHash,
                 Role = "Admin",
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
@@ -116,7 +114,7 @@ try
 catch (Exception ex)
 {
     logger.LogError(ex, "❌ Failed to initialize database");
-    throw;
+    // Don't throw - let the app start even if DB init fails, it will show friendly errors
 }
 
 // Configure middleware
