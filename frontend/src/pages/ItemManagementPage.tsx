@@ -87,10 +87,7 @@ export const ItemManagementPage: React.FC = () => {
     }
   };
 
-  if (isLoading) {
-    return <div className="spinner"></div>;
-  }
-
+  // Hooks must be called before any conditional returns
   const displayedItems = useMemo(() => {
     const filtered = (showInactive ? items : items.filter(i => i.isActive !== false)).filter((item) => {
       if (!searchTerm.trim()) return true;
@@ -114,6 +111,11 @@ export const ItemManagementPage: React.FC = () => {
       lowStock: items.filter(i => (i.quantityInStock || 0) <= 5).length,
     };
   }, [items]);
+
+  // Loading state - after all hooks
+  if (isLoading) {
+    return <div className="spinner"></div>;
+  }
 
   return (
     <div className="container">

@@ -135,10 +135,7 @@ export const EquipmentReceiptPage: React.FC = () => {
     }
   };
 
-  if (isLoading) {
-    return <div className="spinner"></div>;
-  }
-
+  // Hooks must be called before any conditional returns
   const filteredItems = useMemo(() => {
     const query = itemSearch.trim().toLowerCase();
     if (!query) return items;
@@ -149,6 +146,11 @@ export const EquipmentReceiptPage: React.FC = () => {
   }, [items, itemSearch]);
 
   const totalUnits = receiptItems.reduce((sum, item) => sum + item.quantity, 0);
+
+  // Loading state - after all hooks
+  if (isLoading) {
+    return <div className="spinner"></div>;
+  }
 
   return (
     <div className="container">
