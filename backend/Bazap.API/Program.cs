@@ -11,8 +11,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Configure SQLite - use /tmp for better permission handling on macOS
 var dbPath = Path.Combine(Path.GetTempPath(), "bazap", "bazap.db");
 Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+// Disable WAL mode which can cause issues on some filesystems
+var connectionString = $"Data Source={dbPath};Mode=ReadWrite;";
 builder.Services.AddDbContext<BazapContext>(options =>
-    options.UseSqlite($"Data Source={dbPath}"));
+    options.UseSqlite(connectionString, x => x.UseQuerySplittingBehavior(Microsoft.EntityFrameworkCore.QuerySplittingBehavior.SingleQuery)));
 
 // Add JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "super_secret_key_123456789_for_bazap_system_2026";
@@ -81,23 +83,21 @@ try
         var context = scope.ServiceProvider.GetRequiredService<BazapContext>();
         logger.LogInformation("📊 Initializing database...");
         
-        // Delete existing database to start fresh (development only)
-        context.Database.EnsureDeleted();
-        logger.LogInformation("🗑️  Old database deleted");
-        
-        // Create all tables from the model
-        context.Database.EnsureCreated();
-        logger.LogInformation("📋 Database tables created");
-        
-        // Seed default data
-        var existingUsers = context.Users.Any();
-        if (!existingUsers)
+        try
         {
-            var adminPasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123");
-            var adminUser = new Bazap.API.Models.User
+            // Just ensure the database exists, don't delete it
+            context.Database.EnsureCreated();
+            logger.LogInformation("📋 Database tables created");
+            
+            // Seed default data
+            var existingUsers = context.Users.Any();
+            if (!existingUsers)
             {
-                Username = "admin",
-                PasswordHash = adminPasswordHash,
+                var adminPasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123");
+                var adminUser = new Bazap.API.Models.User
+                {
+                    Username = "admin",
+                    PasswordHash = adminPasswordHash,
                 Role = "Admin",
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
