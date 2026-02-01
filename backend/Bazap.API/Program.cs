@@ -8,8 +8,9 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure SQLite
-var dbPath = Path.Combine(AppContext.BaseDirectory, "bazap.db");
+// Configure SQLite - use /tmp for better permission handling on macOS
+var dbPath = Path.Combine(Path.GetTempPath(), "bazap", "bazap.db");
+Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 builder.Services.AddDbContext<BazapContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
 
