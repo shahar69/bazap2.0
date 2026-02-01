@@ -43,7 +43,6 @@ interface RecentActivity {
 const DashboardPage: React.FC = () => {
   const [events, setEvents] = useState<EventDto[]>([]);
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
-  const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [refreshing, setRefreshing] = useState(false);
   const [dateRange, setDateRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
@@ -77,10 +76,8 @@ const DashboardPage: React.FC = () => {
         }));
       
       setRecentActivity(recent);
-      setLoading(false);
     } catch (error) {
       console.error('שגיאה בטעינת נתוני דשבורד:', error);
-      setLoading(false);
     } finally {
       setRefreshing(false);
     }

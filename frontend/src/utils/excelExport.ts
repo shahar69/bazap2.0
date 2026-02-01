@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 interface ExportData {
   title: string;
@@ -14,38 +14,53 @@ interface ExportData {
 /**
  * Generate a modern Excel file with styled sheets
  */
-export const exportToExcel = (config: ExportData) => {
-  const workbook = XLSX.utils.book_new();
+export const exportToExcel = async (config: ExportData) => {
+  const workbook = new ExcelJS.Workbook();
 
   config.sheets.forEach((sheet) => {
+    const worksheet = workbook.addWorksheet(sheet.name);
     const wsData = sheet.data;
-    const ws = XLSX.utils.json_to_sheet(wsData);
 
-    // Set column widths if provided
-    if (sheet.columns) {
-      const colWidths = sheet.columns.map((col) => ({
-        wch: Math.max(12, col.length + 2),
+    if (wsData.length > 0) {
+      // Get column headers from the first row
+      const headers = sheet.columns || Object.keys(wsData[0]);
+      
+      // Set up columns with headers
+      worksheet.columns = headers.map((header) => ({
+        header: header,
+        key: header,
+        width: config.autoWidth ? Math.max(12, header.length + 2) : 15,
       }));
-      ws['!cols'] = colWidths;
-    } else if (config.autoWidth) {
-      // Auto width based on content
-      const colWidths = Object.keys(wsData[0] || {}).map((key) => ({
-        wch: Math.max(12, key.length + 2),
-      }));
-      ws['!cols'] = colWidths;
+
+      // Add rows
+      wsData.forEach((row) => {
+        worksheet.addRow(row);
+      });
+
+      // Style the header row
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).alignment = { horizontal: 'center' };
     }
-
-    XLSX.utils.book_append_sheet(workbook, ws, sheet.name);
   });
 
-  // Generate file
-  XLSX.writeFile(workbook, config.fileName);
+  // Generate file and trigger download
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { 
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+  });
+  
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = config.fileName;
+  link.click();
+  window.URL.revokeObjectURL(url);
 };
 
 /**
  * Export events with items to Excel
  */
-export const exportEventsToExcel = (events: any[], fileName: string = 'אירועים.xlsx') => {
+export const exportEventsToExcel = async (events: any[], fileName: string = 'אירועים.xlsx') => {
   const summaryData = events.map((event) => ({
     'מס׳ אירוע': event.eventNumber || event.id,
     'סוג אירוע': getEventTypeName(event.eventType),
@@ -71,7 +86,7 @@ export const exportEventsToExcel = (events: any[], fileName: string = 'אירו�
     });
   });
 
-  exportToExcel({
+  await exportToExcel({
     title: 'ייצוא אירועים',
     fileName,
     sheets: [
@@ -101,7 +116,7 @@ export const exportEventsToExcel = (events: any[], fileName: string = 'אירו�
 /**
  * Export inspection results to Excel
  */
-export const exportInspectionsToExcel = (events: any[], fileName: string = 'בדיקות.xlsx') => {
+export const exportInspectionsToExcel = async (events: any[], fileName: string = 'בדיקות.xlsx') => {
   const inspectionData: any[] = [];
 
   events.forEach((event) => {
@@ -129,7 +144,7 @@ export const exportInspectionsToExcel = (events: any[], fileName: string = 'בד
       : '0%',
   };
 
-  exportToExcel({
+  await exportToExcel({
     title: 'ייצוא תוצאות בדיקה',
     fileName,
     sheets: [
