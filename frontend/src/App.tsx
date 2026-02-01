@@ -68,10 +68,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [pages]);
 
-  if (!user) {
-    return <LoginPage />;
-  }
-
+  // All hooks must be defined before any conditional returns
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
@@ -96,6 +93,11 @@ const App: React.FC = () => {
     const q = commandQuery.toLowerCase();
     return pages.filter((p) => p.label.toLowerCase().includes(q));
   }, [commandQuery, pages]);
+
+  // Conditional render - after all hooks
+  if (!user) {
+    return <LoginPage />;
+  }
 
   return (
     <div className="app-container">
