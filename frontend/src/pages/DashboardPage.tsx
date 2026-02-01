@@ -191,36 +191,7 @@ const DashboardPage: React.FC = () => {
       .slice(0, 5);
   }, [filteredEvents]);
 
-  if (loading) {
-    return (
-      <div className="dashboard-container">
-        <div style={{ textAlign: 'center', padding: '60px 20px', minHeight: '60vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '20px', animation: 'spin 1s linear infinite' }}>⟳</div>
-          <h2>טוען נתונים...</h2>
-          <p style={{ color: '#666', marginTop: '10px' }}>אנא המתן בזמן שאנחנו אוחזים ביומנים הסביבתיים</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="dashboard-container">
-        <div style={{ textAlign: 'center', padding: '60px 20px', minHeight: '60vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '20px' }}>⚠️</div>
-          <h2>שגיאה בטעינת הנתונים</h2>
-          <p style={{ color: '#d32f2f', marginTop: '10px', marginBottom: '20px' }}>{error}</p>
-          <button 
-            onClick={() => { setLoading(true); setError(''); loadDashboardData(); }}
-            style={{ padding: '10px 20px', backgroundColor: '#2196F3', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}
-          >
-            נסה שוב
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // Always render the page with loading/error UI overlaid if needed
   return (
     <div className="dashboard-container">
       <div className="dashboard-header">

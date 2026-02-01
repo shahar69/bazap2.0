@@ -137,7 +137,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="app-main">
+      <main className="app-main" style={{ minHeight: '60vh' }}>
         {renderPage()}
       </main>
 
