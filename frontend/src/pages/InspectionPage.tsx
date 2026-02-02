@@ -31,6 +31,8 @@ const InspectionPage: React.FC = () => {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
   const [disableMode, setDisableMode] = useState<'single' | 'bulk'>('single');
   const [autoAdvance, setAutoAdvance] = useState(true);
+  const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
+  const [gridSelectedIds, setGridSelectedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     loadEvents();
@@ -171,6 +173,93 @@ const InspectionPage: React.FC = () => {
   };
 
   const clearSelection = () => setSelectedItemIds(new Set());
+
+  const toggleGridSelection = (itemId: number) => {
+    setGridSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
+  const handleGridBatchPass = async () => {
+    if (gridSelectedIds.size === 0) {
+      showAlert('warning', 'בחר לפחות פריט אחד');
+      return;
+    }
+
+    try {
+      setIsPrinting(true);
+      const ids = Array.from(gridSelectedIds);
+      
+      for (const itemId of ids) {
+        await inspectionApi.makeDecision(itemId, 'Pass', undefined, notes || undefined);
+      }
+
+      setCurrentEvent((prev: any) => {
+        if (!prev) return prev;
+        const updatedItems = prev.items.map((item: any) =>
+          ids.includes(item.id)
+            ? { ...item, inspectionStatus: 1 }
+            : item
+        );
+        return { ...prev, items: updatedItems };
+      });
+
+      showAlert('success', `✅ ${ids.length} פריטים סומנו כתקינים`);
+      setGridSelectedIds(new Set());
+      setNotes('');
+    } catch (error: any) {
+      showAlert('error', error.response?.data?.message || 'שגיאה בעדכון החלטות');
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handleGridBatchDisable = async () => {
+    if (!selectedReason) {
+      showAlert('warning', 'בחר סיבה להשבתה');
+      return;
+    }
+
+    if (gridSelectedIds.size === 0) {
+      showAlert('warning', 'בחר לפחות פריט אחד');
+      return;
+    }
+
+    try {
+      setIsPrinting(true);
+      const ids = Array.from(gridSelectedIds);
+      
+      for (const itemId of ids) {
+        await inspectionApi.makeDecision(itemId, 'Disabled', selectedReason, notes || undefined);
+      }
+
+      setCurrentEvent((prev: any) => {
+        if (!prev) return prev;
+        const updatedItems = prev.items.map((item: any) =>
+          ids.includes(item.id)
+            ? { ...item, inspectionStatus: 2, disableReason: selectedReason }
+            : item
+        );
+        return { ...prev, items: updatedItems };
+      });
+
+      showAlert('success', `❌ ${ids.length} פריטים הושבתו`);
+      setShowDisableModal(false);
+      setSelectedReason(null);
+      setNotes('');
+      setGridSelectedIds(new Set());
+    } catch (error: any) {
+      showAlert('error', error.response?.data?.message || 'שגיאה בעדכון החלטות');
+    } finally {
+      setIsPrinting(false);
+    }
+  };
 
   const handlePassDecision = async () => {
     if (!currentItem) return;
@@ -594,6 +683,21 @@ const InspectionPage: React.FC = () => {
           >
             ❓ עזרה
           </button>
+          <button 
+            onClick={() => setViewMode(viewMode === 'single' ? 'grid' : 'single')}
+            style={{
+              background: viewMode === 'grid' ? '#8b5cf6' : '#6b7280',
+              color: 'white',
+              border: 'none',
+              padding: '0.75rem 1.5rem',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '1rem'
+            }}
+          >
+            {viewMode === 'single' ? '🎯 תצוגת רשת' : '📱 תצוגה רגילה'}
+          </button>
         </div>
 
         {/* Progress Bar */}
@@ -618,8 +722,283 @@ const InspectionPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="inspection-layout">
-          <aside className="inspection-sidebar">
+        {/* Grid View Mode */}
+        {viewMode === 'grid' ? (
+          <div className="grid-inspection-view" style={{ marginBottom: '2rem' }}>
+            {/* Grid Header */}
+            <div style={{ background: '#f0f9ff', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                🎯 מצב תצוגת רשת - בחינה מהירה
+              </div>
+              <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+                נבחרו {gridSelectedIds.size} פריטים | {pending} ממתינים
+              </div>
+            </div>
+
+            {/* Grid Items */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '1rem',
+              marginBottom: '1rem'
+            }}>
+              {currentEvent?.items
+                ?.filter((item: any) => {
+                  if (itemFilter === 'pending') return item.inspectionStatus === 0;
+                  if (itemFilter === 'passed') return item.inspectionStatus === 1;
+                  if (itemFilter === 'disabled') return item.inspectionStatus === 2;
+                  return true;
+                })
+                ?.map((item: any) => (
+                <div
+                  key={item.id}
+                  style={{
+                    position: 'relative',
+                    border: gridSelectedIds.has(item.id) ? '3px solid #10b981' : '2px solid #e5e7eb',
+                    borderRadius: '12px',
+                    padding: '1rem',
+                    background: gridSelectedIds.has(item.id) ? '#f0fdf4' : 'white',
+                    cursor: item.inspectionStatus === 0 ? 'pointer' : 'default',
+                    opacity: item.inspectionStatus !== 0 ? 0.6 : 1,
+                    transition: 'all 0.2s',
+                    boxShadow: gridSelectedIds.has(item.id) ? '0 4px 6px rgba(16, 185, 129, 0.3)' : '0 1px 3px rgba(0,0,0,0.1)'
+                  }}
+                  onClick={() => item.inspectionStatus === 0 && toggleGridSelection(item.id)}
+                >
+                  {/* Checkbox */}
+                  {item.inspectionStatus === 0 && (
+                    <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', zIndex: 10 }}>
+                      <input
+                        type="checkbox"
+                        checked={gridSelectedIds.has(item.id)}
+                        onChange={() => toggleGridSelection(item.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ width: '24px', height: '24px', cursor: 'pointer' }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Status Badge */}
+                  {item.inspectionStatus !== 0 && (
+                    <div style={{ 
+                      position: 'absolute', 
+                      top: '0.75rem', 
+                      right: '0.75rem',
+                      padding: '0.25rem 0.75rem',
+                      borderRadius: '12px',
+                      fontSize: '0.8rem',
+                      fontWeight: '600',
+                      background: item.inspectionStatus === 1 ? '#d1fae5' : '#fee2e2',
+                      color: item.inspectionStatus === 1 ? '#065f46' : '#991b1b'
+                    }}>
+                      {item.inspectionStatus === 1 ? '✅ תקין' : '❌ מושבת'}
+                    </div>
+                  )}
+                  
+                  {/* Item Icon/Preview */}
+                  <div style={{ 
+                    height: '120px', 
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '3.5rem',
+                    marginBottom: '0.75rem',
+                    marginTop: '1.5rem'
+                  }}>
+                    📦
+                  </div>
+                  
+                  {/* Item Details */}
+                  <div style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '0.25rem', wordBreak: 'break-word' }}>
+                    {item.itemName}
+                  </div>
+                  <div style={{ 
+                    fontSize: '0.85rem', 
+                    color: '#6b7280', 
+                    fontFamily: 'monospace',
+                    background: '#f3f4f6',
+                    padding: '0.25rem 0.5rem',
+                    borderRadius: '4px',
+                    marginBottom: '0.5rem'
+                  }}>
+                    {item.itemMakat}
+                  </div>
+                  <div style={{ fontSize: '0.9rem', color: '#374151', fontWeight: '500' }}>
+                    כמות: {item.quantity}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Grid Filter Toolbar */}
+            <div style={{ 
+              display: 'flex', 
+              gap: '0.5rem', 
+              marginBottom: '1rem',
+              flexWrap: 'wrap' 
+            }}>
+              <button 
+                onClick={() => setItemFilter('pending')}
+                style={{
+                  background: itemFilter === 'pending' ? '#3b82f6' : '#e5e7eb',
+                  color: itemFilter === 'pending' ? 'white' : '#374151',
+                  border: 'none',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                ⏳ ממתינים ({currentEvent?.items?.filter((i: any) => i.inspectionStatus === 0).length || 0})
+              </button>
+              <button 
+                onClick={() => setItemFilter('passed')}
+                style={{
+                  background: itemFilter === 'passed' ? '#10b981' : '#e5e7eb',
+                  color: itemFilter === 'passed' ? 'white' : '#374151',
+                  border: 'none',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                ✅ תקינים ({currentEvent?.items?.filter((i: any) => i.inspectionStatus === 1).length || 0})
+              </button>
+              <button 
+                onClick={() => setItemFilter('disabled')}
+                style={{
+                  background: itemFilter === 'disabled' ? '#ef4444' : '#e5e7eb',
+                  color: itemFilter === 'disabled' ? 'white' : '#374151',
+                  border: 'none',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                ❌ מושבתים ({currentEvent?.items?.filter((i: any) => i.inspectionStatus === 2).length || 0})
+              </button>
+              <button 
+                onClick={() => setItemFilter('all')}
+                style={{
+                  background: itemFilter === 'all' ? '#6b7280' : '#e5e7eb',
+                  color: itemFilter === 'all' ? 'white' : '#374151',
+                  border: 'none',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                📋 הכל ({currentEvent?.items?.length || 0})
+              </button>
+            </div>
+
+            {/* Grid Actions Bar */}
+            <div style={{ 
+              position: 'sticky', 
+              bottom: 0, 
+              background: 'white', 
+              padding: '1rem',
+              borderTop: '3px solid #e5e7eb',
+              borderRadius: '12px',
+              boxShadow: '0 -4px 6px rgba(0,0,0,0.1)',
+              display: 'flex',
+              gap: '0.75rem',
+              flexWrap: 'wrap'
+            }}>
+              <button
+                onClick={handleGridBatchPass}
+                disabled={gridSelectedIds.size === 0 || isPrinting}
+                style={{
+                  flex: '1 1 200px',
+                  background: gridSelectedIds.size === 0 ? '#d1d5db' : 'linear-gradient(135deg, #10b981, #059669)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '1rem 1.5rem',
+                  borderRadius: '10px',
+                  fontSize: '1.1rem',
+                  fontWeight: '700',
+                  cursor: gridSelectedIds.size === 0 ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: gridSelectedIds.size > 0 ? '0 4px 6px rgba(16, 185, 129, 0.4)' : 'none'
+                }}
+              >
+                ✅ סמן {gridSelectedIds.size} נבחרים כתקינים
+              </button>
+              
+              <button
+                onClick={() => {
+                  if (gridSelectedIds.size === 0) {
+                    showAlert('warning', 'בחר לפחות פריט אחד');
+                    return;
+                  }
+                  setDisableMode('bulk');
+                  setShowDisableModal(true);
+                }}
+                disabled={gridSelectedIds.size === 0 || isPrinting}
+                style={{
+                  flex: '1 1 200px',
+                  background: gridSelectedIds.size === 0 ? '#d1d5db' : 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '1rem 1.5rem',
+                  borderRadius: '10px',
+                  fontSize: '1.1rem',
+                  fontWeight: '700',
+                  cursor: gridSelectedIds.size === 0 ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: gridSelectedIds.size > 0 ? '0 4px 6px rgba(239, 68, 68, 0.4)' : 'none'
+                }}
+              >
+                ❌ השבת {gridSelectedIds.size} נבחרים
+              </button>
+              
+              <button
+                onClick={() => {
+                  const pendingIds = currentEvent?.items
+                    ?.filter((i: any) => i.inspectionStatus === 0)
+                    ?.map((i: any) => i.id) || [];
+                  setGridSelectedIds(new Set(pendingIds));
+                }}
+                style={{
+                  background: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  padding: '1rem 1.5rem',
+                  borderRadius: '10px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  fontSize: '1rem'
+                }}
+              >
+                🎯 בחר כל הממתינים
+              </button>
+              
+              <button
+                onClick={() => setGridSelectedIds(new Set())}
+                style={{
+                  background: '#6b7280',
+                  color: 'white',
+                  border: 'none',
+                  padding: '1rem 1.5rem',
+                  borderRadius: '10px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  fontSize: '1rem'
+                }}
+              >
+                🗑️ נקה בחירה
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Single Item View (existing layout) */
+          <div className="inspection-layout">
+            <aside className="inspection-sidebar">
             <div className="sidebar-header">
               <div>
                 <h3>רשימת פריטים</h3>
@@ -811,7 +1190,8 @@ const InspectionPage: React.FC = () => {
               </div>
             )}
           </section>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Disable Reason Modal */}
@@ -923,10 +1303,10 @@ const InspectionPage: React.FC = () => {
                   borderColor: '#10b981',
                   flex: 1,
                 }}
-                onClick={disableMode === 'bulk' ? handleBulkDisableDecision : handleDisableDecision}
+                onClick={viewMode === 'grid' ? handleGridBatchDisable : (disableMode === 'bulk' ? handleBulkDisableDecision : handleDisableDecision)}
                 disabled={!selectedReason || isPrinting}
               >
-                {isPrinting ? '⏳ הדפסה...' : '✅ אישור'}
+                {isPrinting ? '⏳ מעבד...' : '✅ אישור'}
               </button>
               <button
                 className="cancel-btn"
