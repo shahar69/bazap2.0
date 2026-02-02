@@ -8,8 +8,8 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure SQLite
-var dbPath = Path.Combine(AppContext.BaseDirectory, "bazap.db");
+// Configure SQLite with file in current directory
+var dbPath = "bazap_data.db";
 builder.Services.AddDbContext<BazapContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
 
@@ -80,11 +80,7 @@ try
         var context = scope.ServiceProvider.GetRequiredService<BazapContext>();
         logger.LogInformation("📊 Initializing database...");
         
-        // Delete existing database to start fresh (development only)
-        context.Database.EnsureDeleted();
-        logger.LogInformation("🗑️  Old database deleted");
-        
-        // Create all tables from the model
+        // Just ensure the database exists, don't delete it
         context.Database.EnsureCreated();
         logger.LogInformation("📋 Database tables created");
         
@@ -115,7 +111,7 @@ try
 catch (Exception ex)
 {
     logger.LogError(ex, "❌ Failed to initialize database");
-    throw;
+    // Don't throw - let the app start even if DB init fails, it will show friendly errors
 }
 
 // Configure middleware

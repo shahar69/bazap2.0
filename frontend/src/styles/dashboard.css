@@ -7,6 +7,16 @@
   direction: rtl;
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* Header */
 .dashboard-header {
   display: flex;
@@ -29,6 +39,30 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+.range-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.range-tabs button {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  background: rgba(102, 126, 234, 0.08);
+  color: #4338ca;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.range-tabs button.active {
+  background: #4338ca;
+  color: white;
 }
 
 .dashboard-subtitle {
@@ -203,7 +237,7 @@
 /* Charts Section */
 .dashboard-charts {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 24px;
   margin-bottom: 32px;
 }
@@ -220,6 +254,90 @@
   font-size: 18px;
   color: #1f2937;
   font-weight: 700;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.kpi-card {
+  background: white;
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  border: 1px solid rgba(102, 126, 234, 0.08);
+}
+
+.kpi-label {
+  font-size: 12px;
+  color: #6b7280;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 6px 0;
+  color: #1f2937;
+}
+
+.kpi-value.danger {
+  color: #ef4444;
+}
+
+.kpi-value.warning {
+  color: #f59e0b;
+}
+
+.kpi-meta {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.alert-item {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #fee2e2;
+  background: #fef2f2;
+}
+
+.alert-title {
+  font-weight: 700;
+  color: #991b1b;
+  margin-bottom: 4px;
+}
+
+.alert-meta {
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+.mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mini-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  font-size: 13px;
 }
 
 /* Performance Bars */

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { eventApi } from '../services/apiClient';
 import { exportEventsToExcel, exportInspectionsToExcel } from '../utils/excelExport';
 import '../styles/history.css';
@@ -34,18 +34,14 @@ export const HistoryPage: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
-  // Filter states
+
   const [filters, setFilters] = useState<Filters>({});
   const [showFilters, setShowFilters] = useState(false);
-  
-  // Modal states
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [sortBy, setSortBy] = useState<'date' | 'items' | 'event'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  // Load events on mount and when filters change
   useEffect(() => {
     loadEvents();
   }, [filters]);
@@ -64,7 +60,6 @@ export const HistoryPage: React.FC = () => {
     }
   };
 
-  // Filter events based on current filters
   const filteredEvents = useMemo(() => {
     let result = [...events];
 
@@ -98,7 +93,6 @@ export const HistoryPage: React.FC = () => {
       result = result.filter((e) => new Date(e.createdDate) <= toDate);
     }
 
-    // Sort results
     result.sort((a, b) => {
       let comparison = 0;
       switch (sortBy) {
@@ -154,7 +148,6 @@ export const HistoryPage: React.FC = () => {
 
   return (
     <div className="history-container">
-      {/* Header */}
       <div className="history-header">
         <div className="header-title">
           <h1>📜 רישומים וההיסטוריה</h1>
@@ -171,7 +164,6 @@ export const HistoryPage: React.FC = () => {
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      {/* Filters */}
       {showFilters && (
         <div className="filters-section">
           <div className="filter-grid">
@@ -181,7 +173,7 @@ export const HistoryPage: React.FC = () => {
                 value={filters.eventType ?? -1}
                 onChange={(e) =>
                   handleFilterChange({
-                    eventType: e.target.value === '-1' ? undefined : parseInt(e.target.value),
+                    eventType: e.target.value === '-1' ? undefined : parseInt(e.target.value, 10),
                   })
                 }
               >
@@ -198,7 +190,9 @@ export const HistoryPage: React.FC = () => {
               <select
                 value={filters.status ?? -1}
                 onChange={(e) =>
-                  handleFilterChange({ status: e.target.value === '-1' ? undefined : parseInt(e.target.value) })
+                  handleFilterChange({
+                    status: e.target.value === '-1' ? undefined : parseInt(e.target.value, 10),
+                  })
                 }
               >
                 <option value="-1">הכל</option>
@@ -244,7 +238,6 @@ export const HistoryPage: React.FC = () => {
         </div>
       )}
 
-      {/* Stats */}
       <div className="stats-bar">
         <div className="stat">
           <span className="stat-label">סה״כ אירועים</span>
@@ -264,7 +257,6 @@ export const HistoryPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Export Buttons */}
       <div className="export-section">
         <button className="btn-export" onClick={handleExportAll} title="ייצא את כל האירועים">
           📊 ייצוא אירועים (Excel)
@@ -274,10 +266,9 @@ export const HistoryPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Sort Controls */}
       <div className="sort-section">
         <label>מיון:</label>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as 'date' | 'items' | 'event')}>
           <option value="date">לפי תאריך</option>
           <option value="items">לפי מספר פריטים</option>
           <option value="event">לפי מספר אירוע</option>
@@ -291,7 +282,6 @@ export const HistoryPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Events Table */}
       <div className="table-section">
         {filteredEvents.length === 0 ? (
           <div className="empty-state">
@@ -349,7 +339,6 @@ export const HistoryPage: React.FC = () => {
         )}
       </div>
 
-      {/* Details Modal */}
       {showDetailsModal && selectedEvent && (
         <div className="modal-overlay" onClick={() => setShowDetailsModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -405,7 +394,7 @@ export const HistoryPage: React.FC = () => {
                         <div className="item-qty">
                           <strong>{item.quantity}</strong> יחידות
                         </div>
-                        {item.inspectionAction && (
+                        {item.inspectionAction !== undefined && (
                           <div className={`item-status inspection-${item.inspectionAction}`}>
                             {getInspectionActionName(item.inspectionAction)}
                           </div>
@@ -429,7 +418,6 @@ export const HistoryPage: React.FC = () => {
   );
 };
 
-// Helper functions
 function getEventTypeName(type: number): string {
   const types: { [key: number]: string } = {
     0: 'קבלת ציוד',
