@@ -122,14 +122,14 @@ export const HistoryPage: React.FC = () => {
     setSortOrder('desc');
   }, []);
 
-  const handleExportAll = useCallback(() => {
+  const handleExportAll = useCallback(async () => {
     const timestamp = new Date().toLocaleDateString('he-IL');
-    exportEventsToExcel(filteredEvents, `אירועים_${timestamp}.xlsx`);
+    await exportEventsToExcel(filteredEvents, `אירועים_${timestamp}.xlsx`);
   }, [filteredEvents]);
 
-  const handleExportInspections = useCallback(() => {
+  const handleExportInspections = useCallback(async () => {
     const timestamp = new Date().toLocaleDateString('he-IL');
-    exportInspectionsToExcel(filteredEvents, `בדיקות_${timestamp}.xlsx`);
+    await exportInspectionsToExcel(filteredEvents, `בדיקות_${timestamp}.xlsx`);
   }, [filteredEvents]);
 
   const stats = useMemo(

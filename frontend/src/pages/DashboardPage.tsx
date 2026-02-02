@@ -80,6 +80,8 @@ const DashboardPage: React.FC = () => {
         }));
       
       setRecentActivity(recent);
+    } catch (error) {
+      console.error('שגיאה בטעינת נתוני דשבורד:', error);
       setLoading(false);
     } catch (error: any) {
       const errorMsg = error?.response?.data?.message || error?.message || 'Failed to load dashboard data';
