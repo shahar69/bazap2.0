@@ -18,6 +18,7 @@ public class BazapContext : DbContext
     public DbSet<InspectionAction> InspectionActions { get; set; }
     public DbSet<LabelPrint> LabelPrints { get; set; }
     public DbSet<ItemGroup> ItemGroups { get; set; }
+    public DbSet<ReasonSuggestion> ReasonSuggestions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -83,6 +84,10 @@ public class BazapContext : DbContext
             .WithOne()
             .HasForeignKey("ItemGroupId")
             .OnDelete(DeleteBehavior.SetNull);
+
+        // ReasonSuggestion configuration
+        modelBuilder.Entity<ReasonSuggestion>()
+            .HasIndex(r => new { r.ItemMakat, r.UserId });
 
         // Seed default admin user (password: admin123)
         var adminPasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123");

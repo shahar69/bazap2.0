@@ -18,6 +18,7 @@ public interface IInspectionService
 {
     Task<InspectionActionDto> RecordDecisionAsync(InspectionDecisionRequest request, int userId);
     Task<LabelDataDto> GetLabelDataAsync(int eventItemId);
+    Task<List<string>> GetReasonSuggestionsAsync(string makat, int userId);
 }
 
 public interface IItemSearchService

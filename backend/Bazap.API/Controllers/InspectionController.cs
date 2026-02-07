@@ -103,4 +103,19 @@ public class InspectionController : ControllerBase
             return StatusCode(500, new { message = "שגיאה בהדפסת מדבקות" });
         }
     }
-}
+    [AllowAnonymous]
+    [HttpGet("suggestions/{itemMakat}")]
+    public async Task<ActionResult<List<string>>> GetReasonSuggestions(string itemMakat)
+    {
+        try
+        {
+            var userId = int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var parsed) ? parsed : 1;
+            var suggestions = await _inspectionService.GetReasonSuggestionsAsync(itemMakat, userId);
+            return Ok(suggestions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting suggestions");
+            return StatusCode(500, new { message = "שגיאה בטעינת הצעות" });
+        }
+    }}

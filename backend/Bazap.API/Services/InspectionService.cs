@@ -54,6 +54,12 @@ public class InspectionService : IInspectionService
 
         await _context.SaveChangesAsync();
 
+        // Learn from this reason for future suggestions
+        if (!string.IsNullOrWhiteSpace(request.Notes))
+        {
+            await LearnReasonAsync(eventItem.ItemMakat, request.Notes, userId);
+        }
+
         if (evt != null)
         {
             // Reload items to ensure latest statuses for completion calculation
@@ -105,5 +111,77 @@ public class InspectionService : IInspectionService
             InspectorName = inspector?.Username ?? "Unknown",
             EventNumber = eventItem.Event?.Number ?? "Unknown"
         };
+    }
+
+    private async Task LearnReasonAsync(string makat, string reason, int userId)
+    {
+        reason = reason.Trim();
+        if (string.IsNullOrWhiteSpace(reason)) return;
+
+        var existing = await _context.ReasonSuggestions
+            .FirstOrDefaultAsync(r =>
+                r.ItemMakat == makat &&
+                r.Reason.ToLower() == reason.ToLower() &&
+                r.UserId == userId
+            );
+
+        if (existing != null)
+        {
+            existing.UsageCount++;
+            existing.LastUsed = DateTime.UtcNow;
+        }
+        else
+        {
+            _context.ReasonSuggestions.Add(new ReasonSuggestion
+            {
+                ItemMakat = makat,
+                Reason = reason,
+                UsageCount = 1,
+                LastUsed = DateTime.UtcNow,
+                UserId = userId
+            });
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<List<string>> GetReasonSuggestionsAsync(string makat, int userId)
+    {
+        // Personal suggestions (higher priority)
+        var personal = await _context.ReasonSuggestions
+            .Where(r => r.ItemMakat == makat && r.UserId == userId)
+            .OrderByDescending(r => r.LastUsed)
+            .Take(3)
+            .Select(r => r.Reason)
+            .ToListAsync();
+
+        // Recently used by this user (last 7 days, any item)
+        var recent = await _context.InspectionActions
+            .Where(a =>
+                a.InspectedByUserId == userId &&
+                a.Notes != null &&
+                a.InspectedAt > DateTime.UtcNow.AddDays(-7)
+            )
+            .OrderByDescending(a => a.InspectedAt)
+            .Select(a => a.Notes!)
+            .Distinct()
+            .Take(5)
+            .ToListAsync();
+
+        // Department-wide common reasons for this item type
+        var departmentWide = await _context.ReasonSuggestions
+            .Where(r => r.ItemMakat == makat && r.UserId != userId)
+            .GroupBy(r => r.Reason)
+            .OrderByDescending(g => g.Sum(r => r.UsageCount))
+            .Take(3)
+            .Select(g => g.Key)
+            .ToListAsync();
+
+        return personal
+            .Concat(recent)
+            .Concat(departmentWide)
+            .Distinct()
+            .Take(8)
+            .ToList();
     }
 }

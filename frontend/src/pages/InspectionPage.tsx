@@ -33,6 +33,8 @@ const InspectionPage: React.FC = () => {
   const [autoAdvance, setAutoAdvance] = useState(true);
   const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
   const [gridSelectedIds, setGridSelectedIds] = useState<Set<number>>(new Set());
+  const [reasonSuggestions, setReasonSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   useEffect(() => {
     loadEvents();
@@ -61,6 +63,12 @@ const InspectionPage: React.FC = () => {
     }
   }, [currentEvent, showDisableModal, showBatchModal, showHelp]);
 
+  useEffect(() => {
+    if (showDisableModal && currentItem) {
+      loadReasonSuggestions(currentItem.itemMakat);
+    }
+  }, [showDisableModal, currentItem]);
+
   const showAlert = (type: Alert['type'], message: string) => {
     const id = Date.now().toString();
     setAlerts(prev => [...prev, { type, message, id }]);
@@ -82,6 +90,22 @@ const InspectionPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadReasonSuggestions = async (makat: string) => {
+    try {
+      const response = await fetch(`/api/inspection/suggestions/${encodeURIComponent(makat)}`);
+      const suggestions = await response.json();
+      setReasonSuggestions(suggestions || []);
+    } catch (error) {
+      console.error('Failed to load suggestions', error);
+      setReasonSuggestions([]);
+    }
+  };
+
+  const applySuggestion = (suggestion: string) => {
+    setNotes(suggestion);
+    setShowSuggestions(false);
   };
 
   const selectEvent = (event: any) => {
@@ -1200,13 +1224,114 @@ const InspectionPage: React.FC = () => {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>🤔 בחר סיבת השבתה {disableMode === 'bulk' ? '(לנבחרים)' : ''}</h3>
 
-            <textarea
-              placeholder="הערות נוספות (לא חובה)"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              style={{ width: '100%', minHeight: '80px', marginBottom: '0.75rem', padding: '0.75rem', borderRadius: '8px' }}
-              disabled={isPrinting}
-            />
+            {/* Smart Suggestions */}
+            {reasonSuggestions.length > 0 && (
+              <div style={{ 
+                background: '#f0f9ff', 
+                padding: '1rem', 
+                borderRadius: '8px',
+                marginBottom: '1rem',
+                border: '2px solid #3b82f6'
+              }}>
+                <div style={{ fontSize: '0.95rem', fontWeight: '700', marginBottom: '0.75rem', color: '#1e40af' }}>
+                  💡 הצעות חכמות (לחץ להשתמש):
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {reasonSuggestions.slice(0, 6).map((suggestion, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => applySuggestion(suggestion)}
+                      style={{
+                        background: 'white',
+                        border: '2px solid #3b82f6',
+                        color: '#1e40af',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontSize: '0.9rem',
+                        fontWeight: '600',
+                        transition: 'all 0.2s',
+                        boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#3b82f6';
+                        e.currentTarget.style.color = 'white';
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'white';
+                        e.currentTarget.style.color = '#1e40af';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
+              <textarea
+                placeholder="הערות נוספות (התחל להקליד או בחר הצעה...)"
+                value={notes}
+                onChange={(e) => {
+                  setNotes(e.target.value);
+                  setShowSuggestions(e.target.value.length > 0 && reasonSuggestions.length > 0);
+                }}
+                onFocus={() => setShowSuggestions(notes.length > 0 && reasonSuggestions.length > 0)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                style={{ 
+                  width: '100%', 
+                  minHeight: '80px', 
+                  padding: '0.75rem', 
+                  borderRadius: '8px',
+                  border: '2px solid #e5e7eb',
+                  fontSize: '0.95rem',
+                  fontFamily: 'inherit'
+                }}
+                disabled={isPrinting}
+              />
+              
+              {/* Live autocomplete dropdown */}
+              {showSuggestions && notes.length >= 2 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  background: 'white',
+                  border: '2px solid #3b82f6',
+                  borderRadius: '8px',
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.15)',
+                  zIndex: 1000,
+                  marginTop: '0.25rem'
+                }}>
+                  {reasonSuggestions
+                    .filter(s => s.toLowerCase().includes(notes.toLowerCase()))
+                    .slice(0, 5)
+                    .map((suggestion, idx) => (
+                      <div
+                        key={idx}
+                        onMouseDown={() => applySuggestion(suggestion)}
+                        style={{
+                          padding: '0.75rem',
+                          cursor: 'pointer',
+                          borderBottom: idx < 4 ? '1px solid #f3f4f6' : 'none',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#f0f9ff'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                      >
+                        <div style={{ fontWeight: '600', color: '#1e40af' }}>{suggestion}</div>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+            </div>
 
             <div className="reason-buttons">
               <button
