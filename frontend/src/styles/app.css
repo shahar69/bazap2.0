@@ -202,6 +202,179 @@ body {
   padding: 2rem 0;
 }
 
+.workspace-hero {
+  max-width: 1400px;
+  margin: 0 auto 1.5rem;
+  padding: 0 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(280px, 1fr);
+  gap: 1rem;
+}
+
+.workspace-hero-main,
+.workspace-hero-side,
+.launcher-card {
+  background: white;
+  border: 1px solid rgba(102, 126, 234, 0.12);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+}
+
+.workspace-hero-main {
+  padding: 1.5rem;
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.18), transparent 32%),
+    linear-gradient(135deg, rgba(102, 126, 234, 0.12), rgba(118, 75, 162, 0.08)),
+    white;
+}
+
+.workspace-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(31, 41, 55, 0.08);
+  color: var(--dark);
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 0.9rem;
+}
+
+.workspace-hero-main h2 {
+  font-size: clamp(1.7rem, 3vw, 2.5rem);
+  margin-bottom: 0.6rem;
+}
+
+.workspace-hero-main p {
+  max-width: 60ch;
+  color: var(--gray-600);
+  font-size: 1rem;
+}
+
+.workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.2rem;
+}
+
+.workspace-hero-side {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.hero-tip-card {
+  padding: 1rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(245, 158, 11, 0.08));
+}
+
+.hero-tip-title {
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+
+.hero-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.hero-shortcuts span,
+.recent-page-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.8rem;
+  border-radius: 999px;
+  background: var(--gray-100);
+  color: var(--dark);
+  font-size: 0.88rem;
+}
+
+.launcher-grid {
+  max-width: 1400px;
+  margin: 0 auto 1.5rem;
+  padding: 0 20px;
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 1rem;
+}
+
+.launcher-card {
+  padding: 1.25rem;
+}
+
+.launcher-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.launcher-card-header h3 {
+  font-size: 1.05rem;
+}
+
+.launcher-card-header span {
+  color: var(--gray-500);
+  font-size: 0.9rem;
+}
+
+.launcher-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.launcher-action {
+  text-align: right;
+  padding: 1rem;
+  border-radius: 16px;
+  border: 1px solid var(--gray-200);
+  background: linear-gradient(180deg, white, var(--gray-50));
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.launcher-action strong,
+.launcher-action span {
+  display: block;
+}
+
+.launcher-action span {
+  color: var(--gray-500);
+  font-size: 0.9rem;
+  margin-top: 0.35rem;
+}
+
+.launcher-action:hover,
+.recent-page-chip:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.launcher-action.active {
+  border-color: rgba(102, 126, 234, 0.5);
+  background: linear-gradient(180deg, rgba(102, 126, 234, 0.12), rgba(255, 255, 255, 0.95));
+}
+
+.recent-page-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.recent-page-chip {
+  border: none;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
 .app-footer {
   background-color: #2c3e50;
   color: white;
@@ -283,7 +456,8 @@ body {
 }
 
 .command-item:hover,
-.command-item.active {
+.command-item.active,
+.command-item.selected {
   background: var(--gray-100);
 }
 
@@ -474,6 +648,82 @@ tbody tr:hover {
   color: #0c5460;
 }
 
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(380px, 460px);
+  background:
+    radial-gradient(circle at top right, rgba(118, 75, 162, 0.18), transparent 24%),
+    radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.14), transparent 26%),
+    #f5f7fa;
+}
+
+.login-hero,
+.login-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.login-hero-panel {
+  max-width: 580px;
+}
+
+.login-hero-panel h1 {
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  line-height: 1.1;
+  margin-bottom: 1rem;
+}
+
+.login-hero-panel p {
+  color: var(--gray-600);
+  font-size: 1.05rem;
+  margin-bottom: 1.25rem;
+}
+
+.login-feature-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.login-feature {
+  padding: 0.9rem 1rem;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(102, 126, 234, 0.14);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 440px;
+  border-radius: 20px;
+  box-shadow: var(--shadow-xl);
+}
+
+.login-demo-box {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 16px;
+  background: var(--gray-50);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.login-demo-box p {
+  margin-top: 0.2rem;
+  color: var(--gray-600);
+}
+
+.login-helper-text {
+  margin-top: 1rem;
+  color: var(--gray-500);
+  font-size: 0.9rem;
+}
+
 /* Header */
 .header {
   background-color: var(--primary);
@@ -589,6 +839,29 @@ tbody tr:hover {
 
 /* Responsive */
 @media (max-width: 768px) {
+  .workspace-hero,
+  .launcher-grid,
+  .login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .launcher-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .login-hero {
+    padding-bottom: 0;
+  }
+
+  .login-panel {
+    padding-top: 0;
+  }
+
+  .login-demo-box {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .form-row {
     grid-template-columns: 1fr;
   }

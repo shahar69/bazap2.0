@@ -3,6 +3,47 @@ import { trace } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('bazap-api-client');
 
+const normalizeEventItem = (item: any) => {
+  const inspectionStatus = item?.inspectionStatus ?? item?.inspectionAction ?? 0;
+  const inspectionStatusLabel =
+    item?.inspectionStatusLabel ??
+    (inspectionStatus === 1 ? 'תקין' : inspectionStatus === 2 ? 'מושבת' : 'ממתין');
+
+  return {
+    ...item,
+    makat: item?.makat ?? item?.itemMakat ?? '',
+    itemMakat: item?.itemMakat ?? item?.makat ?? '',
+    name: item?.name ?? item?.itemName ?? '',
+    itemName: item?.itemName ?? item?.name ?? '',
+    inspectionAction: item?.inspectionAction ?? inspectionStatus,
+    inspectionStatus,
+    inspectionStatusLabel,
+  };
+};
+
+const normalizeEvent = (event: any) => {
+  const createdDate = event?.createdDate ?? event?.createdAt ?? new Date().toISOString();
+  const eventType = event?.eventType ?? event?.type ?? 0;
+  const status = event?.status ?? 0;
+  const items = Array.isArray(event?.items) ? event.items.map(normalizeEventItem) : [];
+
+  return {
+    ...event,
+    number: event?.number ?? event?.orderNumber ?? event?.eventNumber ?? '',
+    orderNumber: event?.orderNumber ?? event?.number ?? event?.eventNumber ?? '',
+    eventNumber: event?.eventNumber ?? event?.orderNumber ?? event?.number ?? '',
+    type: eventType,
+    eventType,
+    createdAt: event?.createdAt ?? createdDate,
+    createdDate,
+    status,
+    statusLabel:
+      event?.statusLabel ??
+      (status === 3 ? 'הושלם' : status === 2 ? 'בבחינה' : status === 1 ? 'ממתין לבחינה' : 'טיוטה'),
+    items,
+  };
+};
+
 export const eventApi = {
   createEvent: async (sourceUnit: string, receiver: string, type: string) => {
     return tracer.startActiveSpan('eventApi.createEvent', async (span) => {
@@ -23,7 +64,7 @@ export const eventApi = {
           'event.created': true,
           'event.id': response.data.id,
         });
-        return response.data;
+        return normalizeEvent(response.data);
       } catch (error) {
         span.recordException(error as Error);
         throw error;
@@ -37,7 +78,7 @@ export const eventApi = {
       try {
         const response = await api.get(`/events/${id}`);
         span.setAttribute('event.status', response.data.status);
-        return response.data;
+        return normalizeEvent(response.data);
       } catch (error) {
         span.recordException(error as Error);
         throw error;
@@ -60,7 +101,7 @@ export const eventApi = {
           quantity,
         });
         span.setAttribute('item.added', true);
-        return response.data;
+        return normalizeEvent(response.data);
       } catch (error) {
         span.recordException(error as Error);
         throw error;
@@ -77,7 +118,7 @@ export const eventApi = {
       try {
         const response = await api.post(`/events/${eventId}/remove-item/${itemId}`);
         span.setAttribute('item.removed', true);
-        return response.data;
+        return normalizeEvent(response.data);
       } catch (error) {
         span.recordException(error as Error);
         throw error;
@@ -119,7 +160,7 @@ export const eventApi = {
       try {
         const response = await api.get('/events/list', { params: { status } });
         span.setAttribute('events.count', response.data?.length || 0);
-        return response.data;
+        return (response.data || []).map(normalizeEvent);
       } catch (error) {
         span.recordException(error as Error);
         throw error;
@@ -132,7 +173,7 @@ export const eventApi = {
       try {
         const response = await api.get('/events/list');
         span.setAttribute('events.count', response.data?.length || 0);
-        return response.data;
+        return (response.data || []).map(normalizeEvent);
       } catch (error) {
         span.recordException(error as Error);
         throw error;
@@ -216,7 +257,11 @@ export const inspectionApi = {
       try {
         const response = await api.get(`/inspection/label-preview/${eventItemId}`);
         span.setAttribute('label.preview_generated', true);
-        return response.data;
+        return {
+          ...response.data,
+          orderNumber: response.data?.orderNumber ?? response.data?.eventNumber ?? '',
+          itemHistory: response.data?.itemHistory ?? [],
+        };
       } catch (error) {
         span.recordException(error as Error);
         throw error;
@@ -264,5 +309,56 @@ export const inspectionApi = {
         throw error;
       }
     });
+  },
+};
+
+export const smartIntegrationApi = {
+  previewImport: async (rawText: string, fileName?: string) => {
+    const response = await api.post('/smart-integration/import/preview', { rawText, fileName });
+    return response.data;
+  },
+
+  commitImport: async (payload: any) => {
+    const response = await api.post('/smart-integration/import/commit', payload);
+    return normalizeEvent(response.data);
+  },
+
+  exportSap: async (eventIds: number[]) => {
+    const response = await api.post(
+      '/smart-integration/sap/export',
+      { eventIds },
+      { responseType: 'blob' }
+    );
+
+    const contentDisposition = response.headers['content-disposition'] as string | undefined;
+    const fileNameMatch = contentDisposition?.match(/filename\*?=(?:UTF-8''|")?([^";\n]+)/i);
+    const fileName = fileNameMatch?.[1] ? decodeURIComponent(fileNameMatch[1].replace(/"/g, '')) : 'sap-export.zip';
+
+    return { blob: response.data, fileName };
+  },
+
+  pushSap: async (eventIds: number[], forceFileFallback: boolean = false) => {
+    const response = await api.post('/smart-integration/sap/push', { eventIds, forceFileFallback });
+    return response.data;
+  },
+
+  getSapStatus: async (eventId: number) => {
+    const response = await api.get(`/smart-integration/sap/status/${eventId}`);
+    return response.data;
+  },
+
+  retrySap: async (eventId: number) => {
+    const response = await api.post(`/smart-integration/sap/retry/${eventId}`);
+    return response.data;
+  },
+
+  getItemMappings: async () => {
+    const response = await api.get('/smart-integration/sap/mappings/items');
+    return response.data;
+  },
+
+  updateItemMapping: async (itemId: number, payload: any) => {
+    const response = await api.put(`/smart-integration/sap/mappings/items/${itemId}`, payload);
+    return response.data;
   },
 };

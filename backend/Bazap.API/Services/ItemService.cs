@@ -30,19 +30,11 @@ public class ItemService : IItemService
         if (!includeInactive)
             query = query.Where(i => i.IsActive);
 
-        return await query
-            .Select(i => new ItemDto
-            {
-                Id = i.Id,
-                Name = i.Name,
-                Code = i.Code,
-                QuantityInStock = i.QuantityInStock,
-                IsActive = i.IsActive,
-                CreatedAt = i.CreatedAt,
-                UpdatedAt = i.UpdatedAt
-            })
-            .OrderBy(i => i.Name)
-            .ToListAsync();
+        var items = await query.OrderBy(i => i.Name).ToListAsync();
+        var itemIds = items.Select(i => i.Id).ToList();
+        var mappings = await _context.ItemSapMappings.Where(m => itemIds.Contains(m.ItemId)).ToDictionaryAsync(m => m.ItemId);
+
+        return items.Select(i => ToDto(i, mappings.GetValueOrDefault(i.Id))).ToList();
     }
 
     public async Task<ItemDto?> GetItemByIdAsync(int id)
@@ -51,17 +43,8 @@ public class ItemService : IItemService
         
         if (item == null)
             return null;
-
-        return new ItemDto
-        {
-            Id = item.Id,
-            Name = item.Name,
-            Code = item.Code,
-            QuantityInStock = item.QuantityInStock,
-            IsActive = item.IsActive,
-            CreatedAt = item.CreatedAt,
-            UpdatedAt = item.UpdatedAt
-        };
+        var mapping = await _context.ItemSapMappings.FirstOrDefaultAsync(m => m.ItemId == id);
+        return ToDto(item, mapping);
     }
 
     public async Task<ItemDto> CreateItemAsync(CreateItemRequest request)
@@ -85,16 +68,7 @@ public class ItemService : IItemService
         _context.Items.Add(item);
         await _context.SaveChangesAsync();
 
-        return new ItemDto
-        {
-            Id = item.Id,
-            Name = item.Name,
-            Code = item.Code,
-            QuantityInStock = item.QuantityInStock,
-            IsActive = item.IsActive,
-            CreatedAt = item.CreatedAt,
-            UpdatedAt = item.UpdatedAt
-        };
+        return ToDto(item, null);
     }
 
     public async Task<ItemDto> UpdateItemAsync(int id, UpdateItemRequest request)
@@ -125,16 +99,8 @@ public class ItemService : IItemService
         _context.Items.Update(item);
         await _context.SaveChangesAsync();
 
-        return new ItemDto
-        {
-            Id = item.Id,
-            Name = item.Name,
-            Code = item.Code,
-            QuantityInStock = item.QuantityInStock,
-            IsActive = item.IsActive,
-            CreatedAt = item.CreatedAt,
-            UpdatedAt = item.UpdatedAt
-        };
+        var mapping = await _context.ItemSapMappings.FirstOrDefaultAsync(m => m.ItemId == id);
+        return ToDto(item, mapping);
     }
 
     public async Task<bool> DeleteItemAsync(int id)
@@ -150,5 +116,29 @@ public class ItemService : IItemService
         _context.Items.Remove(item);
         await _context.SaveChangesAsync();
         return true;
+    }
+
+    private static ItemDto ToDto(Item item, ItemSapMapping? mapping)
+    {
+        var mappingStatus = mapping == null
+            ? "unmapped"
+            : string.IsNullOrWhiteSpace(mapping.SapItemCode)
+                ? "missing_code"
+                : mapping.IsVerified ? "verified" : "mapped";
+
+        return new ItemDto
+        {
+            Id = item.Id,
+            Name = item.Name,
+            Code = item.Code,
+            QuantityInStock = item.QuantityInStock,
+            IsActive = item.IsActive,
+            SapItemCode = mapping?.SapItemCode,
+            SapItemName = mapping?.SapItemName,
+            SapMappingVerified = mapping?.IsVerified ?? false,
+            SapMappingStatus = mappingStatus,
+            CreatedAt = item.CreatedAt,
+            UpdatedAt = item.UpdatedAt
+        };
     }
 }

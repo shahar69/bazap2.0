@@ -2,6 +2,8 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { itemsApi } from '../services/api';
 import { Item } from '../types';
 import { exportItemsToExcel } from '../utils/excelExport';
+import { smartIntegrationApi } from '../services/apiClient';
+import { getErrorMessage } from '../utils/errors';
 
 export const ItemManagementPage: React.FC = () => {
   const [items, setItems] = useState<Item[]>([]);
@@ -14,6 +16,7 @@ export const ItemManagementPage: React.FC = () => {
   const [formData, setFormData] = useState({ name: '', code: '', quantityInStock: 0, isActive: true });
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'stock'>('name');
+  const [mappingDrafts, setMappingDrafts] = useState<Record<number, { sapItemCode: string; sapItemName: string; isVerified: boolean }>>({});
 
   useEffect(() => {
     loadItems();
@@ -28,6 +31,30 @@ export const ItemManagementPage: React.FC = () => {
       setError('שגיאה בטעינת הפריטים');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSaveMapping = async (item: Item) => {
+    setError('');
+    setSuccess('');
+
+    const draft = mappingDrafts[item.id] ?? {
+      sapItemCode: item.sapItemCode || '',
+      sapItemName: item.sapItemName || '',
+      isVerified: item.sapMappingVerified || false,
+    };
+
+    if (draft.isVerified && !draft.sapItemCode.trim()) {
+      setError('לא ניתן לאמת מיפוי SAP ללא SAP ItemCode');
+      return;
+    }
+
+    try {
+      await smartIntegrationApi.updateItemMapping(item.id, draft);
+      setSuccess('מיפוי SAP נשמר בהצלחה');
+      await loadItems();
+    } catch (err) {
+      setError(getErrorMessage(err, 'שגיאה בשמירת מיפוי SAP'));
     }
   };
 
@@ -69,7 +96,7 @@ export const ItemManagementPage: React.FC = () => {
       setShowForm(false);
       loadItems();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'שגיאה בשמירת הפריט');
+      setError(getErrorMessage(err, 'שגיאה בשמירת הפריט'));
     }
   };
 
@@ -83,7 +110,7 @@ export const ItemManagementPage: React.FC = () => {
       setSuccess('הפריט נמחק בהצלחה');
       loadItems();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'שגיאה במחיקת הפריט');
+      setError(getErrorMessage(err, 'שגיאה במחיקת הפריט'));
     }
   };
 
@@ -92,7 +119,9 @@ export const ItemManagementPage: React.FC = () => {
     const filtered = (showInactive ? items : items.filter(i => i.isActive !== false)).filter((item) => {
       if (!searchTerm.trim()) return true;
       const query = searchTerm.toLowerCase();
-      return [item.name, item.code].filter(Boolean).some((value) => value.toLowerCase().includes(query));
+      return [item.name, item.code]
+        .filter((value): value is string => Boolean(value))
+        .some((value) => value.toLowerCase().includes(query));
     });
 
     return filtered.sort((a, b) => {
@@ -173,6 +202,10 @@ export const ItemManagementPage: React.FC = () => {
         <div className="card" style={{ padding: '12px', textAlign: 'center' }}>
           <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#f59e0b' }}>{stats.lowStock}</div>
           <div style={{ fontSize: '12px', color: '#6b7280' }}>מלאי נמוך</div>
+        </div>
+        <div className="card" style={{ padding: '12px', textAlign: 'center' }}>
+          <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#3b82f6' }}>{items.filter(i => i.sapMappingStatus === 'verified').length}</div>
+          <div style={{ fontSize: '12px', color: '#6b7280' }}>מיפויי SAP מאומתים</div>
         </div>
       </div>
 
@@ -257,6 +290,8 @@ export const ItemManagementPage: React.FC = () => {
               <th>קוד</th>
               <th>כמות במלאי</th>
               <th>סטטוס</th>
+              <th>SAP ItemCode</th>
+              <th>סטטוס מיפוי</th>
               <th>פעולות</th>
             </tr>
           </thead>
@@ -277,7 +312,66 @@ export const ItemManagementPage: React.FC = () => {
                     <span style={{ color: 'green' }}>פעיל</span>
                   )}
                 </td>
+                <td>
+                  <div style={{ display: 'grid', gap: '6px', minWidth: '220px' }}>
+                    <input
+                      type="text"
+                      placeholder="SAP ItemCode"
+                      value={(mappingDrafts[item.id]?.sapItemCode ?? item.sapItemCode ?? '')}
+                      onChange={(e) => setMappingDrafts(prev => ({
+                        ...prev,
+                        [item.id]: {
+                          sapItemCode: e.target.value,
+                          sapItemName: prev[item.id]?.sapItemName ?? item.sapItemName ?? '',
+                          isVerified: prev[item.id]?.isVerified ?? item.sapMappingVerified ?? false,
+                        }
+                      }))}
+                      style={{ marginBottom: 0 }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="SAP ItemName"
+                      value={(mappingDrafts[item.id]?.sapItemName ?? item.sapItemName ?? '')}
+                      onChange={(e) => setMappingDrafts(prev => ({
+                        ...prev,
+                        [item.id]: {
+                          sapItemCode: prev[item.id]?.sapItemCode ?? item.sapItemCode ?? '',
+                          sapItemName: e.target.value,
+                          isVerified: prev[item.id]?.isVerified ?? item.sapMappingVerified ?? false,
+                        }
+                      }))}
+                      style={{ marginBottom: 0 }}
+                    />
+                  </div>
+                </td>
+                <td>
+                  <div style={{ display: 'grid', gap: '6px' }}>
+                    <span>{item.sapMappingStatus || 'unmapped'}</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input
+                        type="checkbox"
+                        checked={mappingDrafts[item.id]?.isVerified ?? item.sapMappingVerified ?? false}
+                        onChange={(e) => setMappingDrafts(prev => ({
+                          ...prev,
+                          [item.id]: {
+                            sapItemCode: prev[item.id]?.sapItemCode ?? item.sapItemCode ?? '',
+                            sapItemName: prev[item.id]?.sapItemName ?? item.sapItemName ?? '',
+                            isVerified: e.target.checked,
+                          }
+                        }))}
+                      />
+                      מאומת
+                    </label>
+                  </div>
+                </td>
                 <td style={{ display: 'flex', gap: '5px' }}>
+                  <button
+                    className="btn btn-success"
+                    onClick={() => handleSaveMapping(item)}
+                    style={{ padding: '5px 10px', fontSize: '12px' }}
+                  >
+                    שמור SAP
+                  </button>
                   <button
                     className="btn btn-primary"
                     onClick={() => handleEdit(item)}

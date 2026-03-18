@@ -7,6 +7,7 @@ public class CreateEventRequest
     public required string SourceUnit { get; set; }
     public required string Receiver { get; set; }
     public EventType Type { get; set; } = EventType.Receiving;
+    public string? OrderNumber { get; set; }
 }
 
 public class AddItemToEventRequest
@@ -30,6 +31,7 @@ public class EventItemDto
     public string ItemName { get; set; } = string.Empty;
     public int Quantity { get; set; }
     public ItemInspectionStatus InspectionStatus { get; set; }
+    public string InspectionStatusLabel { get; set; } = string.Empty;
     public DateTime AddedAt { get; set; }
 }
 
@@ -37,12 +39,20 @@ public class EventDto
 {
     public int Id { get; set; }
     public string Number { get; set; } = string.Empty;
+    public string OrderNumber { get; set; } = string.Empty;
     public EventType Type { get; set; }
     public string SourceUnit { get; set; } = string.Empty;
     public string Receiver { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public string CreatedByUser { get; set; } = string.Empty;
     public EventStatus Status { get; set; }
+    public string StatusLabel { get; set; } = string.Empty;
+    public bool SapReady { get; set; }
+    public string SapSyncStatus { get; set; } = "not_ready";
+    public string SapSyncMessage { get; set; } = string.Empty;
+    public string SapDocumentType { get; set; } = string.Empty;
+    public int? SapDocEntry { get; set; }
+    public int? SapDocNum { get; set; }
     public List<EventItemDto> Items { get; set; } = new();
 
     // Derived inspection progress helpers

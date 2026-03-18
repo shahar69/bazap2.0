@@ -29,6 +29,17 @@ public interface IItemSearchService
     Task<List<ItemSearchResponse>> GetFrequentItemsAsync(int limit);
 }
 
+public interface IAiImportService
+{
+    Task<SmartImportResultDto> PreviewImportAsync(SmartImportRequest request);
+    Task<EventDto> CommitImportAsync(SmartImportCommitRequest request, int userId);
+}
+
+public interface ISapExportService
+{
+    Task<(byte[] Content, SapExportPreviewDto Preview)> ExportOrdersAsync(SapExportRequest request);
+}
+
 public interface IPrintService
 {
     Task<byte[]> GenerateLabelPdfAsync(int eventItemId, int copies = 1);

@@ -18,7 +18,15 @@ public class EventService : IEventService
 
     public async Task<EventDto> CreateEventAsync(CreateEventRequest request, int userId)
     {
-        var eventNumber = $"EVT-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..8].ToUpper()}";
+        if (string.IsNullOrWhiteSpace(request.SourceUnit))
+            throw new InvalidOperationException("יש להזין יחידת מקור");
+
+        if (string.IsNullOrWhiteSpace(request.Receiver))
+            throw new InvalidOperationException("יש להזין שם מקבל");
+
+        var eventNumber = string.IsNullOrWhiteSpace(request.OrderNumber)
+            ? $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString()[..6].ToUpper()}"
+            : request.OrderNumber.Trim();
         
         var evt = new Event
         {
@@ -34,7 +42,7 @@ public class EventService : IEventService
         _context.Events.Add(evt);
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("Event created: {EventNumber}", eventNumber);
+        _logger.LogInformation("Order created: {OrderNumber}", eventNumber);
         return await GetEventAsync(evt.Id);
     }
 
@@ -42,6 +50,7 @@ public class EventService : IEventService
     {
         var evt = await _context.Events
             .Include(e => e.Items)
+            .ThenInclude(i => i.InspectionActions)
             .FirstOrDefaultAsync(e => e.Id == id)
             ?? throw new KeyNotFoundException($"Event {id} not found");
 
@@ -50,17 +59,31 @@ public class EventService : IEventService
         var pendingItems = evt.Items.Count(i => i.InspectionStatus == ItemInspectionStatus.Pending);
         var passedItems = evt.Items.Count(i => i.InspectionStatus == ItemInspectionStatus.Pass);
         var failedItems = evt.Items.Count(i => i.InspectionStatus == ItemInspectionStatus.Fail);
+        var readyItemIds = evt.Items.Where(i => i.ItemId.HasValue).Select(i => i.ItemId!.Value).Distinct().ToList();
+        var mappings = await _context.ItemSapMappings
+            .Where(m => readyItemIds.Contains(m.ItemId))
+            .ToDictionaryAsync(m => m.ItemId);
+        var latestSync = await _context.SapSyncLogs.Where(l => l.EventId == evt.Id).OrderByDescending(l => l.UpdatedAt).FirstOrDefaultAsync();
+        var sapReady = IsSapReady(evt.Items, mappings);
 
         return new EventDto
         {
             Id = evt.Id,
             Number = evt.Number,
+            OrderNumber = evt.Number,
             Type = evt.Type,
             SourceUnit = evt.SourceUnit,
             Receiver = evt.Receiver,
             CreatedAt = evt.CreatedAt,
             CreatedByUser = user?.Username ?? "Unknown",
             Status = evt.Status,
+            StatusLabel = GetEventStatusLabel(evt.Status),
+            SapReady = sapReady,
+            SapSyncStatus = ResolveSapSyncStatus(sapReady, latestSync?.Status),
+            SapSyncMessage = ResolveSapSyncMessage(sapReady, latestSync),
+            SapDocumentType = latestSync?.SapDocumentType ?? GetSapDocumentType(evt.Type),
+            SapDocEntry = latestSync?.SapDocEntry,
+            SapDocNum = latestSync?.SapDocNum,
             Items = evt.Items.Select(i => new EventItemDto
             {
                 Id = i.Id,
@@ -69,6 +92,7 @@ public class EventService : IEventService
                 ItemName = i.ItemName,
                 Quantity = i.Quantity,
                 InspectionStatus = i.InspectionStatus,
+                InspectionStatusLabel = GetInspectionStatusLabel(i.InspectionStatus),
                 AddedAt = i.AddedAt
             }).ToList(),
             PendingItems = pendingItems,
@@ -84,6 +108,9 @@ public class EventService : IEventService
             .Include(e => e.Items)
             .FirstOrDefaultAsync(e => e.Id == id)
             ?? throw new KeyNotFoundException($"Event {id} not found");
+
+        if (request.Quantity <= 0)
+            throw new InvalidOperationException("כמות חייבת להיות גדולה מ-0");
 
         var itemMakat = request.ItemMakat?.Trim() ?? string.Empty;
         var itemName = request.ItemName?.Trim() ?? string.Empty;
@@ -102,6 +129,9 @@ public class EventService : IEventService
         // If no name was provided, fall back to makat so UI still shows something
         if (string.IsNullOrWhiteSpace(itemName))
             itemName = itemMakat;
+
+        if (string.IsNullOrWhiteSpace(itemMakat) && string.IsNullOrWhiteSpace(itemName) && !request.ItemId.HasValue)
+            throw new InvalidOperationException("יש לספק פריט תקין להוספה להזמנה");
 
         var targetQty = Math.Max(0, request.Quantity);
 
@@ -148,7 +178,7 @@ public class EventService : IEventService
         _context.EventItems.Remove(eventItem);
         await _context.SaveChangesAsync();
         
-        _logger.LogInformation("Removed EventItem {EventItemId} from Event {EventId}", eventItemId, id);
+        _logger.LogInformation("Removed EventItem {EventItemId} from Order {OrderId}", eventItemId, id);
         return await GetEventAsync(id);
     }
 
@@ -175,7 +205,7 @@ public class EventService : IEventService
         evt.Status = EventStatus.Pending;
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("Event submitted for inspection: {EventNumber}", evt.Number);
+        _logger.LogInformation("Order submitted for inspection: {OrderNumber}", evt.Number);
     }
 
     public async Task<List<EventDto>> ListEventsAsync(int userId, EventStatus? status)
@@ -186,6 +216,16 @@ public class EventService : IEventService
             query = query.Where(e => e.Status == status.Value);
 
         var events = await query.Include(e => e.Items).ToListAsync();
+        var eventIds = events.Select(e => e.Id).ToList();
+        var itemIds = events.SelectMany(e => e.Items).Where(i => i.ItemId.HasValue).Select(i => i.ItemId!.Value).Distinct().ToList();
+        var mappings = await _context.ItemSapMappings
+            .Where(m => itemIds.Contains(m.ItemId))
+            .ToDictionaryAsync(m => m.ItemId);
+        var latestLogs = await _context.SapSyncLogs
+            .Where(l => eventIds.Contains(l.EventId))
+            .GroupBy(l => l.EventId)
+            .Select(g => g.OrderByDescending(x => x.UpdatedAt).First())
+            .ToDictionaryAsync(l => l.EventId);
 
         var userIds = events.Select(e => e.CreatedByUserId).Distinct().ToList();
         var users = await _context.Users
@@ -200,17 +240,27 @@ public class EventService : IEventService
             var pendingItems = items.Count(i => i.InspectionStatus == ItemInspectionStatus.Pending);
             var passedItems = items.Count(i => i.InspectionStatus == ItemInspectionStatus.Pass);
             var failedItems = items.Count(i => i.InspectionStatus == ItemInspectionStatus.Fail);
+            var sapReady = IsSapReady(items, mappings);
+            latestLogs.TryGetValue(evt.Id, out var latestLog);
 
             eventDtos.Add(new EventDto
             {
                 Id = evt.Id,
                 Number = evt.Number ?? string.Empty,
+                OrderNumber = evt.Number ?? string.Empty,
                 Type = evt.Type,
                 SourceUnit = evt.SourceUnit ?? string.Empty,
                 Receiver = evt.Receiver ?? string.Empty,
                 CreatedAt = evt.CreatedAt,
                 CreatedByUser = users.TryGetValue(evt.CreatedByUserId, out var username) ? username : "Unknown",
                 Status = evt.Status,
+                StatusLabel = GetEventStatusLabel(evt.Status),
+                SapReady = sapReady,
+                SapSyncStatus = ResolveSapSyncStatus(sapReady, latestLog?.Status),
+                SapSyncMessage = ResolveSapSyncMessage(sapReady, latestLog),
+                SapDocumentType = latestLog?.SapDocumentType ?? GetSapDocumentType(evt.Type),
+                SapDocEntry = latestLog?.SapDocEntry,
+                SapDocNum = latestLog?.SapDocNum,
                 Items = items.Select(i => new EventItemDto
                 {
                     Id = i.Id,
@@ -219,6 +269,7 @@ public class EventService : IEventService
                     ItemName = i.ItemName ?? string.Empty,
                     Quantity = i.Quantity,
                     InspectionStatus = i.InspectionStatus,
+                    InspectionStatusLabel = GetInspectionStatusLabel(i.InspectionStatus),
                     AddedAt = i.AddedAt
                 }).ToList(),
                 PendingItems = pendingItems,
@@ -229,5 +280,73 @@ public class EventService : IEventService
         }
 
         return eventDtos;
+    }
+
+    private static string GetInspectionStatusLabel(ItemInspectionStatus status) => status switch
+    {
+        ItemInspectionStatus.Pass => "תקין",
+        ItemInspectionStatus.Fail => "מושבת",
+        _ => "ממתין"
+    };
+
+    private static string GetEventStatusLabel(EventStatus status) => status switch
+    {
+        EventStatus.Draft => "טיוטה",
+        EventStatus.Pending => "ממתין לבחינה",
+        EventStatus.InProgress => "בבחינה",
+        EventStatus.Completed => "הושלם",
+        EventStatus.Archived => "ארכיון",
+        _ => "לא ידוע"
+    };
+
+    private static string GetSapDocumentType(EventType type) => type switch
+    {
+        EventType.Receiving => "GoodsReceipt",
+        EventType.Outgoing => "GoodsIssue",
+        _ => "Inspection"
+    };
+
+    private static bool IsSapReady(IEnumerable<EventItem> items, IReadOnlyDictionary<int, ItemSapMapping> mappings)
+    {
+        var materializedItems = items.ToList();
+        if (materializedItems.Count == 0)
+        {
+            return false;
+        }
+
+        return materializedItems.All(item =>
+            item.ItemId.HasValue &&
+            mappings.TryGetValue(item.ItemId.Value, out var mapping) &&
+            !string.IsNullOrWhiteSpace(mapping.SapItemCode));
+    }
+
+    private static string ResolveSapSyncStatus(bool sapReady, string? latestStatus)
+    {
+        if (latestStatus == "synced")
+        {
+            return "exported";
+        }
+
+        if (sapReady && (string.IsNullOrWhiteSpace(latestStatus) || latestStatus == "not_ready"))
+        {
+            return "ready";
+        }
+
+        return latestStatus ?? (sapReady ? "ready" : "not_ready");
+    }
+
+    private static string ResolveSapSyncMessage(bool sapReady, SapSyncLog? latestLog)
+    {
+        if (latestLog?.Status == "synced")
+        {
+            return "חבילת ייצוא ל-SAP הוכנה וממתינה להעברה";
+        }
+
+        if (sapReady && (latestLog == null || latestLog.Status == "not_ready"))
+        {
+            return "ההזמנה מוכנה להכנת חבילת ייצוא ל-SAP.";
+        }
+
+        return latestLog?.ErrorMessage ?? latestLog?.ResponsePayload ?? string.Empty;
     }
 }

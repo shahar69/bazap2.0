@@ -10,6 +10,10 @@ export interface Item {
   code?: string;
   quantityInStock: number;
   isActive: boolean;
+  sapItemCode?: string;
+  sapItemName?: string;
+  sapMappingVerified?: boolean;
+  sapMappingStatus?: string;
   createdAt: string;
   updatedAt: string;
 }

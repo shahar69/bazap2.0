@@ -4,6 +4,9 @@ backend/Bazap.API/obj/
 backend/Bazap.API/bazap.db
 backend/Bazap.API/bazap.db-shm
 backend/Bazap.API/bazap.db-wal
+backend/Bazap.API/bazap_data.db
+backend/Bazap.API/bazap_data.db-shm
+backend/Bazap.API/bazap_data.db-wal
 backend/.vs/
 
 ## Frontend specific
@@ -11,6 +14,10 @@ frontend/node_modules/
 frontend/dist/
 frontend/.env.local
 frontend/.env.*.local
+frontend/*.tsbuildinfo
+
+## Tooling artifacts
+.playwright-cli/
 
 ## IDE
 .vscode/

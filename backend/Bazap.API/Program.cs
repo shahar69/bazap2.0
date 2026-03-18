@@ -38,6 +38,8 @@ builder.Services.AddAuthorization();
 // Add OpenTelemetry tracing
 builder.AddBazapTracing();
 
+builder.Services.AddHttpClient();
+
 // Add services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IItemService, ItemService>();
@@ -46,6 +48,13 @@ builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<IInspectionService, InspectionService>();
 builder.Services.AddScoped<IItemSearchService, ItemSearchService>();
 builder.Services.AddScoped<IPrintService, PrintService>();
+builder.Services.AddScoped<IAiImportService, AiImportService>();
+builder.Services.AddScoped<ISapExportService, SapExportService>();
+builder.Services.AddScoped<ISapMappingService, SapMappingService>();
+builder.Services.AddScoped<SapIntegrationProfileResolver>();
+builder.Services.AddScoped<FileExportSapTransportAdapter>();
+builder.Services.AddScoped<ServiceLayerSapTransportAdapter>();
+builder.Services.AddScoped<ISapSyncOrchestrator, SapSyncOrchestrator>();
 
 // Add controllers
 builder.Services.AddControllers();
@@ -83,6 +92,7 @@ try
         // Just ensure the database exists, don't delete it
         context.Database.EnsureCreated();
         logger.LogInformation("📋 Database tables created");
+        EnsureSapTables(context);
         
         // Seed default data
         var existingUsers = context.Users.Any();
@@ -284,4 +294,74 @@ static string? FindFileUpwards(string fileName, int maxDepth = 12)
     }
 
     return null;
+}
+
+static void EnsureSapTables(BazapContext context)
+{
+    context.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS SapIntegrationProfiles (
+    Id INTEGER PRIMARY KEY,
+    Mode TEXT NOT NULL,
+    BaseUrl TEXT NULL,
+    CompanyDb TEXT NULL,
+    AuthMode TEXT NOT NULL,
+    ItemKeyMode TEXT NOT NULL,
+    Username TEXT NULL,
+    Password TEXT NULL,
+    DefaultWarehouse TEXT NULL,
+    GoodsIssueSeries TEXT NULL,
+    GoodsReceiptSeries TEXT NULL,
+    EnabledDocumentTypes TEXT NOT NULL,
+    UseDirectServiceLayer INTEGER NOT NULL DEFAULT 0,
+    UpdatedAt TEXT NOT NULL
+);");
+
+    context.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS ItemSapMappings (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ItemId INTEGER NOT NULL,
+    LocalMakat TEXT NOT NULL,
+    SapItemCode TEXT NULL,
+    SapItemName TEXT NULL,
+    IsVerified INTEGER NOT NULL DEFAULT 0,
+    LastSyncAt TEXT NULL,
+    CreatedAt TEXT NOT NULL,
+    UpdatedAt TEXT NOT NULL,
+    FOREIGN KEY(ItemId) REFERENCES Items(Id) ON DELETE CASCADE
+);");
+
+    context.Database.ExecuteSqlRaw(@"
+CREATE UNIQUE INDEX IF NOT EXISTS IX_ItemSapMappings_ItemId ON ItemSapMappings(ItemId);");
+
+    context.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS SapSyncLogs (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    EventId INTEGER NOT NULL,
+    Direction TEXT NOT NULL,
+    SapDocumentType TEXT NOT NULL,
+    Status TEXT NOT NULL,
+    SapDocEntry INTEGER NULL,
+    SapDocNum INTEGER NULL,
+    RequestPayload TEXT NULL,
+    ResponsePayload TEXT NULL,
+    ErrorMessage TEXT NULL,
+    CreatedAt TEXT NOT NULL,
+    UpdatedAt TEXT NOT NULL,
+    FOREIGN KEY(EventId) REFERENCES Events(Id) ON DELETE CASCADE
+);");
+
+    var profileExists = context.SapIntegrationProfiles.Any();
+    if (!profileExists)
+    {
+        context.SapIntegrationProfiles.Add(new SapIntegrationProfile
+        {
+            Mode = "file_export",
+            AuthMode = "basic",
+            ItemKeyMode = "local_makat_mapping",
+            EnabledDocumentTypes = "GoodsIssue,GoodsReceipt",
+            UseDirectServiceLayer = false,
+            UpdatedAt = DateTime.UtcNow
+        });
+        context.SaveChanges();
+    }
 }

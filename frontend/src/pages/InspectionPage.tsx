@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { eventApi, inspectionApi } from '../services/apiClient';
 import '../styles/inspection.css';
+import { getErrorMessage } from '../utils/errors';
 
 interface Alert {
   type: 'success' | 'error' | 'warning';
@@ -35,6 +36,7 @@ const InspectionPage: React.FC = () => {
   const [gridSelectedIds, setGridSelectedIds] = useState<Set<number>>(new Set());
   const [reasonSuggestions, setReasonSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const currentItem = currentEvent?.items?.[currentItemIndex];
 
   useEffect(() => {
     loadEvents();
@@ -83,10 +85,10 @@ const InspectionPage: React.FC = () => {
       const result = await eventApi.listEvents('Pending');
       setEvents(result || []);
       if (!result || result.length === 0) {
-        showAlert('warning', 'אין אירועים ממתינים לבחינה');
+        showAlert('warning', 'אין הזמנות ממתינות לבחינה');
       }
-    } catch (error: any) {
-      showAlert('error', error.response?.data?.message || 'שגיאה בטעינת אירועים');
+    } catch (error) {
+      showAlert('error', getErrorMessage(error, 'שגיאה בטעינת הזמנות'));
     } finally {
       setIsLoading(false);
     }
@@ -125,10 +127,8 @@ const InspectionPage: React.FC = () => {
     setSelectedItemIds(new Set());
     setItemSearch('');
     setItemFilter('pending');
-    showAlert('success', `אירוע ${event.number} נבחר`);
+    showAlert('success', `הזמנה ${event.orderNumber || event.number} נבחרה`);
   };
-
-  const currentItem = currentEvent?.items?.[currentItemIndex];
 
   const recalcProgress = (items: any[] = []) => {
     const total = items.length;
@@ -146,7 +146,7 @@ const InspectionPage: React.FC = () => {
     const query = eventSearch.trim().toLowerCase();
     const list = [...events].filter((event) => {
       if (!query) return true;
-      return [event.number, event.sourceUnit, event.receiver]
+      return [event.orderNumber || event.number, event.sourceUnit, event.receiver]
         .filter(Boolean)
         .some((value: string) => value.toLowerCase().includes(query));
     });
@@ -531,7 +531,7 @@ const InspectionPage: React.FC = () => {
       <div className="inspection-page">
         <div className="inspection-header">
           <h1>🔍 מעבדת בחינה</h1>
-          <p>בחר אירוע לבדיקה</p>
+          <p>בחר הזמנה לבדיקה</p>
         </div>
 
         {alerts.map(alert => (
@@ -544,22 +544,22 @@ const InspectionPage: React.FC = () => {
           {isLoading ? (
             <div className="loading-container">
               <div className="loading-spinner"></div>
-              <p>טוען אירועים...</p>
+              <p>טוען הזמנות...</p>
             </div>
           ) : events.length === 0 ? (
             <div className="empty-state">
               <div className="empty-state-icon">📭</div>
-              <h2>אין אירועים לבחינה</h2>
-              <p>כל האירועים בחונו כבר או אין אירועים בהמתנה</p>
+              <h2>אין הזמנות לבחינה</h2>
+              <p>כל ההזמנות נבחנו כבר או שאין הזמנות בהמתנה</p>
             </div>
           ) : (
             <div className="events-list-container">
               <div className="events-list-header">
-                <h2>🎯 אירועים בהמתנה: {filteredEvents.length}</h2>
+                <h2>🎯 הזמנות בהמתנה: {filteredEvents.length}</h2>
                 <div className="events-toolbar">
                   <input
                     className="events-search"
-                    placeholder="חפש לפי מספר אירוע, יחידה או מקבל..."
+                    placeholder="חפש לפי מספר הזמנה, יחידה או מקבל..."
                     value={eventSearch}
                     onChange={(e) => setEventSearch(e.target.value)}
                   />
@@ -623,7 +623,7 @@ const InspectionPage: React.FC = () => {
     <div className="inspection-page">
       <div className="inspection-header">
         <h1>🔍 מעבדת בחינה</h1>
-        <p>אירוע {currentEvent?.number}</p>
+        <p>הזמנה {currentEvent?.orderNumber || currentEvent?.number}</p>
       </div>
 
       {alerts.map(alert => (
@@ -1530,7 +1530,7 @@ const InspectionPage: React.FC = () => {
       {showSummary && (
         <div className="modal-overlay" onClick={() => setShowSummary(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px', maxHeight: '80vh', overflow: 'auto' }}>
-            <h3>📊 סיכום בחינה - אירוע {currentEvent?.number}</h3>
+            <h3>📊 סיכום בחינה - הזמנה {currentEvent?.orderNumber || currentEvent?.number}</h3>
             
             <div style={{ marginBottom: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
               <div style={{ background: '#f3f4f6', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
@@ -1640,7 +1640,7 @@ const InspectionPage: React.FC = () => {
               <ul style={{ margin: 0, paddingRight: '1.5rem', color: '#1e40af' }}>
                 <li>השתמש בעיבוד אצווה לפריטים זהים רצופים</li>
                 <li>הוסף הערות לכל פריט לתיעוד טוב יותר</li>
-                <li>בדוק את הסיכום לפני סיום האירוע</li>
+                <li>בדוק את הסיכום לפני סיום ההזמנה</li>
                 <li>מדבקות יופקו אוטומטית לפריטים מושבתים</li>
               </ul>
             </div>

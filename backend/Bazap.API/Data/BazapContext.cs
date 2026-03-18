@@ -19,6 +19,9 @@ public class BazapContext : DbContext
     public DbSet<LabelPrint> LabelPrints { get; set; }
     public DbSet<ItemGroup> ItemGroups { get; set; }
     public DbSet<ReasonSuggestion> ReasonSuggestions { get; set; }
+    public DbSet<SapIntegrationProfile> SapIntegrationProfiles { get; set; }
+    public DbSet<ItemSapMapping> ItemSapMappings { get; set; }
+    public DbSet<SapSyncLog> SapSyncLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -89,6 +92,22 @@ public class BazapContext : DbContext
         modelBuilder.Entity<ReasonSuggestion>()
             .HasIndex(r => new { r.ItemMakat, r.UserId });
 
+        modelBuilder.Entity<ItemSapMapping>()
+            .HasIndex(m => m.ItemId)
+            .IsUnique();
+
+        modelBuilder.Entity<ItemSapMapping>()
+            .HasOne(m => m.Item)
+            .WithMany()
+            .HasForeignKey(m => m.ItemId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<SapSyncLog>()
+            .HasOne(l => l.Event)
+            .WithMany()
+            .HasForeignKey(l => l.EventId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // Seed default admin user (password: admin123)
         var adminPasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123");
         modelBuilder.Entity<User>().HasData(
@@ -100,6 +119,19 @@ public class BazapContext : DbContext
                 Role = "Admin",
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
+            }
+        );
+
+        modelBuilder.Entity<SapIntegrationProfile>().HasData(
+            new SapIntegrationProfile
+            {
+                Id = 1,
+                Mode = "file_export",
+                AuthMode = "basic",
+                ItemKeyMode = "local_makat_mapping",
+                EnabledDocumentTypes = "GoodsIssue,GoodsReceipt",
+                UseDirectServiceLayer = false,
+                UpdatedAt = DateTime.UtcNow
             }
         );
     }

@@ -100,6 +100,7 @@ public class InspectionService : IInspectionService
             ?? throw new InvalidOperationException("No inspection action found");
 
         var inspector = await _context.Users.FindAsync(lastAction.InspectedByUserId);
+        var itemHistory = await GetItemHistoryAsync(eventItem.ItemMakat);
 
         return new LabelDataDto
         {
@@ -109,8 +110,72 @@ public class InspectionService : IInspectionService
             DisableReason = lastAction.DisableReason ?? DisableReason.Other,
             ActionDate = lastAction.InspectedAt,
             InspectorName = inspector?.Username ?? "Unknown",
-            EventNumber = eventItem.Event?.Number ?? "Unknown"
+            EventNumber = eventItem.Event?.Number ?? "Unknown",
+            OrderNumber = eventItem.Event?.Number ?? "Unknown",
+            ItemStatusLabel = eventItem.InspectionStatus == ItemInspectionStatus.Pass ? "תקין" : "מושבת",
+            ItemHistory = itemHistory
         };
+    }
+
+    private async Task<List<ItemHistoryEntryDto>> GetItemHistoryAsync(string makat)
+    {
+        if (string.IsNullOrWhiteSpace(makat))
+        {
+            return new List<ItemHistoryEntryDto>();
+        }
+
+        var historyRows = await _context.EventItems
+            .Where(ei => ei.ItemMakat == makat)
+            .Include(ei => ei.Event)
+            .Include(ei => ei.InspectionActions)
+            .OrderByDescending(ei => ei.AddedAt)
+            .Take(8)
+            .Select(ei => new
+            {
+                OrderNumber = ei.Event != null ? ei.Event.Number : string.Empty,
+                Receiver = ei.Event != null ? ei.Event.Receiver : string.Empty,
+                SourceUnit = ei.Event != null ? ei.Event.SourceUnit : string.Empty,
+                InspectionStatus = ei.InspectionStatus,
+                Notes = ei.InspectionActions
+                    .OrderByDescending(a => a.InspectedAt)
+                    .Select(a => a.Notes)
+                    .FirstOrDefault(),
+                ActionDate = ei.InspectionActions
+                    .OrderByDescending(a => a.InspectedAt)
+                    .Select(a => (DateTime?)a.InspectedAt)
+                    .FirstOrDefault() ?? ei.AddedAt,
+                InspectorId = ei.InspectionActions
+                    .OrderByDescending(a => a.InspectedAt)
+                    .Select(a => (int?)a.InspectedByUserId)
+                    .FirstOrDefault()
+            })
+            .ToListAsync();
+
+        var inspectorIds = historyRows
+            .Where(row => row.InspectorId.HasValue)
+            .Select(row => row.InspectorId!.Value)
+            .Distinct()
+            .ToList();
+
+        var inspectors = await _context.Users
+            .Where(u => inspectorIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.Username);
+
+        return historyRows.Select(row => new ItemHistoryEntryDto
+        {
+            OrderNumber = row.OrderNumber,
+            Receiver = row.Receiver,
+            SourceUnit = row.SourceUnit,
+            ItemStatusLabel = row.InspectionStatus switch
+            {
+                ItemInspectionStatus.Pass => "תקין",
+                ItemInspectionStatus.Fail => "מושבת",
+                _ => "ממתין"
+            },
+            InspectorName = row.InspectorId.HasValue && inspectors.TryGetValue(row.InspectorId.Value, out var name) ? name : "לא צוין",
+            ActionDate = row.ActionDate,
+            Notes = row.Notes ?? string.Empty
+        }).ToList();
     }
 
     private async Task LearnReasonAsync(string makat, string reason, int userId)

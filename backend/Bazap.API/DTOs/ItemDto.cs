@@ -22,6 +22,10 @@ public class ItemDto
     public string? Code { get; set; }
     public int QuantityInStock { get; set; }
     public bool IsActive { get; set; }
+    public string? SapItemCode { get; set; }
+    public string? SapItemName { get; set; }
+    public bool SapMappingVerified { get; set; }
+    public string SapMappingStatus { get; set; } = "unmapped";
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

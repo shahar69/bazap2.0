@@ -37,6 +37,10 @@ public class EventsController : ControllerBase
             var result = await _eventService.CreateEventAsync(request, userId);
             return Ok(result);
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating event");
@@ -71,6 +75,10 @@ public class EventsController : ControllerBase
         catch (KeyNotFoundException)
         {
             return NotFound(new { message = "אירוע לא נמצא" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
         catch (Exception ex)
         {

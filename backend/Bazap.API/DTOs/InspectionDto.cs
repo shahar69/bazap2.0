@@ -30,6 +30,20 @@ public class LabelDataDto
     public DateTime ActionDate { get; set; }
     public string InspectorName { get; set; } = string.Empty;
     public string EventNumber { get; set; } = string.Empty;
+    public string OrderNumber { get; set; } = string.Empty;
+    public string ItemStatusLabel { get; set; } = string.Empty;
+    public List<ItemHistoryEntryDto> ItemHistory { get; set; } = new();
+}
+
+public class ItemHistoryEntryDto
+{
+    public string OrderNumber { get; set; } = string.Empty;
+    public string Receiver { get; set; } = string.Empty;
+    public string SourceUnit { get; set; } = string.Empty;
+    public string ItemStatusLabel { get; set; } = string.Empty;
+    public string InspectorName { get; set; } = string.Empty;
+    public DateTime ActionDate { get; set; }
+    public string Notes { get; set; } = string.Empty;
 }
 
 public class PrintLabelRequest

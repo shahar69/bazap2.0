@@ -5,10 +5,14 @@ import '../styles/dashboard.css';
 interface EventDto {
   id: number;
   eventNumber: string;
+  orderNumber?: string;
   eventType: number;
   sourceUnit: string;
   receiver: string;
   status: number;
+  statusLabel?: string;
+  sapReady?: boolean;
+  sapSyncStatus?: string;
   createdDate: string;
   items?: EventItemDto[];
 }
@@ -22,18 +26,19 @@ interface EventItemDto {
 }
 
 interface DashboardStats {
-  totalEvents: number;
-  activeEvents: number;
-  completedEvents: number;
-  totalItemsInspected: number;
+  totalOrders: number;
+  openOrders: number;
+  completedOrders: number;
+  totalItemsHandled: number;
   totalDisabled: number;
   totalPassed: number;
-  todayEvents: number;
-  todayInspections: number;
+  readyForSap: number;
+  exportedToSap: number;
+  needsSapCompletion: number;
 }
 
 interface RecentActivity {
-  eventNumber: string;
+  orderNumber: string;
   eventType: string;
   createdDate: string;
   itemsCount: number;
@@ -72,23 +77,24 @@ const DashboardPage: React.FC = () => {
         .sort((a: EventDto, b: EventDto) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime())
         .slice(0, 15)
         .map((e: EventDto) => ({
-          eventNumber: e.eventNumber,
+          orderNumber: e.orderNumber || e.eventNumber,
           eventType: getEventTypeName(e.eventType),
           createdDate: new Date(e.createdDate).toLocaleString('he-IL'),
           itemsCount: e.items?.length || 0,
-          status: e.status === 0 ? 'פעיל' : 'הושלם',
+          status: e.sapSyncStatus === 'exported'
+            ? 'חבילת SAP הוכנה'
+            : isCompletedStatus(e.status)
+              ? 'הושלם'
+              : 'פתוח לטיפול',
         }));
       
       setRecentActivity(recent);
-    } catch (error) {
-      console.error('שגיאה בטעינת נתוני דשבורד:', error);
-      setLoading(false);
     } catch (error: any) {
       const errorMsg = error?.response?.data?.message || error?.message || 'Failed to load dashboard data';
       console.error('❌ Dashboard error:', errorMsg, error);
       setError(errorMsg);
-      setLoading(false);
     } finally {
+      setLoading(false);
       setRefreshing(false);
     }
   };
@@ -96,9 +102,8 @@ const DashboardPage: React.FC = () => {
   const getEventTypeName = (type: number) => {
     const types: { [key: number]: string } = {
       0: 'קבלת ציוד',
-      1: 'החזרת ציוד',
+      1: 'בדיקת ציוד',
       2: 'ניפוק ציוד',
-      3: 'בדיקת ציוד'
     };
     return types[type] || 'לא ידוע';
   };
@@ -118,37 +123,40 @@ const DashboardPage: React.FC = () => {
   }, [events, dateRange]);
 
   const stats = React.useMemo<DashboardStats>(() => {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
     let totalItems = 0;
     let totalDisabled = 0;
     let totalPassed = 0;
-    let todayEvents = 0;
-    let todayInspections = 0;
+    let readyForSap = 0;
+    let exportedToSap = 0;
+    let needsSapCompletion = 0;
 
     filteredEvents.forEach((event: EventDto) => {
-      const eventDate = new Date(event.createdDate);
       totalItems += event.items?.length || 0;
 
       event.items?.forEach((item: EventItemDto) => {
         if (item.inspectionAction === 1) totalPassed++;
         if (item.inspectionAction === 2) totalDisabled++;
-        if (eventDate >= todayStart) todayInspections++;
       });
 
-      if (eventDate >= todayStart) todayEvents++;
+      if (event.sapSyncStatus === 'exported') {
+        exportedToSap++;
+      } else if (event.sapReady) {
+        readyForSap++;
+      } else if ((event.items?.length || 0) > 0) {
+        needsSapCompletion++;
+      }
     });
 
     return {
-      totalEvents: filteredEvents.length,
-      activeEvents: filteredEvents.filter((e: EventDto) => e.status === 0).length,
-      completedEvents: filteredEvents.filter((e: EventDto) => e.status === 1).length,
-      totalItemsInspected: totalItems,
+      totalOrders: filteredEvents.length,
+      openOrders: filteredEvents.filter((e: EventDto) => !isCompletedStatus(e.status)).length,
+      completedOrders: filteredEvents.filter((e: EventDto) => isCompletedStatus(e.status)).length,
+      totalItemsHandled: totalItems,
       totalDisabled,
       totalPassed,
-      todayEvents,
-      todayInspections,
+      readyForSap,
+      exportedToSap,
+      needsSapCompletion,
     };
   }, [filteredEvents]);
 
@@ -163,12 +171,12 @@ const DashboardPage: React.FC = () => {
   }, [stats.totalPassed, stats.totalDisabled]);
 
   const averageItemsPerEvent = React.useMemo(() => {
-    return stats.totalEvents > 0 ? (stats.totalItemsInspected / stats.totalEvents).toFixed(1) : '0';
-  }, [stats.totalEvents, stats.totalItemsInspected]);
+    return stats.totalOrders > 0 ? (stats.totalItemsHandled / stats.totalOrders).toFixed(1) : '0';
+  }, [stats.totalOrders, stats.totalItemsHandled]);
 
   const agingActiveEvents = React.useMemo(() => {
     const now = new Date().getTime();
-    return filteredEvents.filter((event) => event.status === 0 && (now - new Date(event.createdDate).getTime()) > 48 * 60 * 60 * 1000);
+    return filteredEvents.filter((event) => !isCompletedStatus(event.status) && (now - new Date(event.createdDate).getTime()) > 48 * 60 * 60 * 1000);
   }, [filteredEvents]);
 
   const topItems = React.useMemo(() => {
@@ -196,10 +204,13 @@ const DashboardPage: React.FC = () => {
   // Always render the page with loading/error UI overlaid if needed
   return (
     <div className="dashboard-container">
+      {loading && <div className="alert alert-warning">טוען נתוני דשבורד...</div>}
+      {error && <div className="alert alert-error">{error}</div>}
+
       <div className="dashboard-header">
         <div className="dashboard-title">
           <h1>🎯 לוח הבקרה של המפקד</h1>
-          <p className="dashboard-subtitle">מעקב ובקרה בזמן אמת • ניטור מלא של ציוד</p>
+          <p className="dashboard-subtitle">מה פתוח עכשיו, מה דורש השלמות, ומה מוכן לחבילת SAP</p>
           <div className="range-tabs">
             <button className={dateRange === 'today' ? 'active' : ''} onClick={() => setDateRange('today')}>היום</button>
             <button className={dateRange === '7d' ? 'active' : ''} onClick={() => setDateRange('7d')}>7 ימים</button>
@@ -225,8 +236,8 @@ const DashboardPage: React.FC = () => {
         <div className="stat-card stat-primary">
           <div className="stat-icon">📊</div>
           <div className="stat-content">
-            <div className="stat-value">{stats.totalEvents}</div>
-            <div className="stat-label">סה"כ אירועים</div>
+            <div className="stat-value">{stats.totalOrders}</div>
+            <div className="stat-label">סה"כ הזמנות</div>
           </div>
         </div>
 
@@ -249,32 +260,32 @@ const DashboardPage: React.FC = () => {
         <div className="stat-card stat-warning">
           <div className="stat-icon">⚡</div>
           <div className="stat-content">
-            <div className="stat-value">{stats.activeEvents}</div>
-            <div className="stat-label">אירועים פעילים</div>
+            <div className="stat-value">{stats.openOrders}</div>
+            <div className="stat-label">הזמנות פתוחות</div>
           </div>
         </div>
 
         <div className="stat-card stat-info">
-          <div className="stat-icon">📦</div>
+          <div className="stat-icon">🏭</div>
           <div className="stat-content">
-            <div className="stat-value">{stats.totalItemsInspected}</div>
-            <div className="stat-label">סה"כ פריטים</div>
+            <div className="stat-value">{stats.readyForSap}</div>
+            <div className="stat-label">מוכנות לייצוא SAP</div>
           </div>
         </div>
 
         <div className="stat-card stat-completed">
-          <div className="stat-icon">🏁</div>
+          <div className="stat-icon">⬇️</div>
           <div className="stat-content">
-            <div className="stat-value">{stats.completedEvents}</div>
-            <div className="stat-label">אירועים הושלמו</div>
+            <div className="stat-value">{stats.exportedToSap}</div>
+            <div className="stat-label">חבילות SAP הוכנו</div>
           </div>
         </div>
 
         <div className="stat-card stat-today">
-          <div className="stat-icon">📅</div>
+          <div className="stat-icon">⚠️</div>
           <div className="stat-content">
-            <div className="stat-value">{stats.todayEvents}</div>
-            <div className="stat-label">אירועים היום</div>
+            <div className="stat-value">{stats.needsSapCompletion}</div>
+            <div className="stat-label">דורשות השלמות</div>
           </div>
         </div>
 
@@ -299,9 +310,9 @@ const DashboardPage: React.FC = () => {
           <div className="kpi-meta">מחושב לטווח הנבחר</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-label">אירועים פתוחים מעל 48 שעות</div>
+          <div className="kpi-label">הזמנות פתוחות מעל 48 שעות</div>
           <div className="kpi-value warning">{agingActiveEvents.length}</div>
-          <div className="kpi-meta">דורש טיפול מפקדה</div>
+          <div className="kpi-meta">דורש דחיפה תפעולית</div>
         </div>
       </div>
 
@@ -317,7 +328,7 @@ const DashboardPage: React.FC = () => {
               <div className="progress-bar">
                 <div 
                   className="progress-fill progress-success" 
-                  style={{ width: `${(stats.totalPassed / (stats.totalItemsInspected || 1)) * 100}%` }}
+                  style={{ width: `${(stats.totalPassed / (stats.totalItemsHandled || 1)) * 100}%` }}
                 ></div>
               </div>
             </div>
@@ -330,33 +341,33 @@ const DashboardPage: React.FC = () => {
               <div className="progress-bar">
                 <div 
                   className="progress-fill progress-danger" 
-                  style={{ width: `${(stats.totalDisabled / (stats.totalItemsInspected || 1)) * 100}%` }}
+                  style={{ width: `${(stats.totalDisabled / (stats.totalItemsHandled || 1)) * 100}%` }}
                 ></div>
               </div>
             </div>
 
             <div className="performance-item">
               <div className="performance-label">
-                <span>אירועים הושלמו</span>
-                <span className="performance-value">{stats.completedEvents}</span>
+                <span>הזמנות הושלמו</span>
+                <span className="performance-value">{stats.completedOrders}</span>
               </div>
               <div className="progress-bar">
                 <div 
                   className="progress-fill progress-info" 
-                  style={{ width: `${(stats.completedEvents / (stats.totalEvents || 1)) * 100}%` }}
+                  style={{ width: `${(stats.completedOrders / (stats.totalOrders || 1)) * 100}%` }}
                 ></div>
               </div>
             </div>
 
             <div className="performance-item">
               <div className="performance-label">
-                <span>אירועים פעילים</span>
-                <span className="performance-value">{stats.activeEvents}</span>
+                <span>הזמנות פתוחות</span>
+                <span className="performance-value">{stats.openOrders}</span>
               </div>
               <div className="progress-bar">
                 <div 
                   className="progress-fill progress-warning" 
-                  style={{ width: `${(stats.activeEvents / (stats.totalEvents || 1)) * 100}%` }}
+                  style={{ width: `${(stats.openOrders / (stats.totalOrders || 1)) * 100}%` }}
                 ></div>
               </div>
             </div>
@@ -364,14 +375,14 @@ const DashboardPage: React.FC = () => {
         </div>
 
         <div className="chart-card">
-          <h3>🚨 התראות מפקדה</h3>
+          <h3>🚨 מה דורש התערבות</h3>
           <div className="alerts-list">
             {agingActiveEvents.length === 0 ? (
               <div className="no-activity">אין התראות חריגות</div>
             ) : (
               agingActiveEvents.slice(0, 5).map((event) => (
                 <div key={event.id} className="alert-item">
-                  <div className="alert-title">{event.eventNumber} • {getEventTypeName(event.eventType)}</div>
+                  <div className="alert-title">{event.orderNumber || event.eventNumber} • {getEventTypeName(event.eventType)}</div>
                   <div className="alert-meta">יחידה: {event.sourceUnit} • מקבל: {event.receiver}</div>
                 </div>
               ))
@@ -388,14 +399,14 @@ const DashboardPage: React.FC = () => {
               recentActivity.map((activity, index) => (
                 <div key={index} className="activity-item">
                   <div className="activity-icon">
-                    {activity.status === 'פעיל' ? '⚡' : '✓'}
+                    {activity.status === 'פתוח לטיפול' ? '⚡' : activity.status === 'חבילת SAP הוכנה' ? '⬇️' : '✓'}
                   </div>
                   <div className="activity-details">
                     <div className="activity-title">
-                      {activity.eventType} - {activity.eventNumber}
+                      {activity.eventType} - {activity.orderNumber}
                     </div>
                     <div className="activity-meta">
-                      {activity.createdDate} • {activity.itemsCount} פריטים • <span className={`status-${activity.status === 'פעיל' ? 'active' : 'completed'}`}>{activity.status}</span>
+                      {activity.createdDate} • {activity.itemsCount} פריטים • <span className={`status-${activity.status === 'פתוח לטיפול' ? 'active' : 'completed'}`}>{activity.status}</span>
                     </div>
                   </div>
                 </div>
@@ -452,11 +463,15 @@ const DashboardPage: React.FC = () => {
         </div>
         <div className="footer-stat">
           <span className="footer-icon">🚀</span>
-          <span>BAZAP 2.0 Commander Dashboard v2.1</span>
+          <span>BAZAP 2.0 Operational Dashboard - Stage 1 SAP Export</span>
         </div>
       </div>
     </div>
   );
 };
+
+function isCompletedStatus(status: number): boolean {
+  return status === 3 || status === 4;
+}
 
 export default DashboardPage;

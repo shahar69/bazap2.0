@@ -140,7 +140,7 @@ export const EquipmentReceiptPage: React.FC = () => {
     const query = itemSearch.trim().toLowerCase();
     if (!query) return items;
     return items.filter((item) => [item.name, item.code]
-      .filter(Boolean)
+      .filter((value): value is string => Boolean(value))
       .some((value) => value.toLowerCase().includes(query))
     );
   }, [items, itemSearch]);

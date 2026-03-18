@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { eventApi, itemSearchApi } from '../services/apiClient';
+import { eventApi, itemSearchApi, smartIntegrationApi } from '../services/apiClient';
+import ExcelJS from 'exceljs';
 import '../styles/warehouse.css';
+import { getErrorMessage } from '../utils/errors';
 
 interface Alert {
   type: 'success' | 'error' | 'warning' | 'info';
@@ -12,6 +14,26 @@ interface QuickAddModal {
   visible: boolean;
   item: any;
   quantity: number;
+}
+
+interface SmartImportPreview {
+  usedAi?: boolean;
+  orderNumber?: string;
+  sourceUnit?: string;
+  receiver?: string;
+  warnings?: string[];
+  lines?: Array<{
+    makat: string;
+    itemName: string;
+    quantity: number;
+    itemId?: number | null;
+    matchedCatalogItem?: boolean;
+    suggestedStatus?: string;
+    sapItemCode?: string;
+    matchStatus?: string;
+    confidence?: number;
+    warnings?: string[];
+  }>;
 }
 
 const ReceivingPage: React.FC = () => {
@@ -26,6 +48,9 @@ const ReceivingPage: React.FC = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [quickAddModal, setQuickAddModal] = useState<QuickAddModal>({ visible: false, item: null, quantity: 1 });
   const [showHelp, setShowHelp] = useState(false);
+  const [smartImportText, setSmartImportText] = useState('');
+  const [smartImportPreview, setSmartImportPreview] = useState<SmartImportPreview | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchDebounceRef = useRef<any>(null);
 
@@ -93,18 +118,101 @@ const ReceivingPage: React.FC = () => {
       return;
     }
 
+    const validImportLines = (smartImportPreview?.lines || []).filter(
+      (line) => line.quantity > 0 && (line.itemId || line.makat?.trim() || line.itemName?.trim())
+    );
+    const importOrderNumber = smartImportPreview?.orderNumber || '';
+
+    if (smartImportPreview && smartImportPreview.lines && validImportLines.length === 0) {
+      showAlert('warning', 'הייבוא החכם לא מכיל שורות תקינות ליצירת הזמנה');
+      return;
+    }
+
     try {
       setIsCreatingEvent(true);
-      const newEvent = await eventApi.createEvent(sourceUnit, receiver, 'Receiving');
-      setEvent(newEvent);
-      showAlert('success', `✅ אירוע ${newEvent.number} נוצר בהצלחה`);
+      const createdEvent = validImportLines.length
+        ? await smartIntegrationApi.commitImport({
+            orderNumber: importOrderNumber,
+            sourceUnit,
+            receiver,
+            eventType: 0,
+            lines: validImportLines,
+          })
+        : await eventApi.createEvent(sourceUnit, receiver, 'Receiving');
+
+      setEvent(createdEvent);
+      showAlert('success', `✅ הזמנה ${createdEvent.orderNumber || createdEvent.number} נוצרה בהצלחה`);
       setSourceUnit('');
       setReceiver('');
+      setSmartImportText('');
+      setSmartImportPreview(null);
       setTimeout(() => searchInputRef.current?.focus(), 100);
-    } catch (error: any) {
-      showAlert('error', error.response?.data?.message || 'שגיאה ביצירת אירוע');
+    } catch (error) {
+      showAlert('error', getErrorMessage(error, 'שגיאה ביצירת הזמנה'));
     } finally {
       setIsCreatingEvent(false);
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    try {
+      let text = '';
+
+      if (file.name.toLowerCase().endsWith('.csv') || file.type.includes('csv') || file.type.startsWith('text/')) {
+        text = await file.text();
+      } else if (file.name.toLowerCase().endsWith('.xlsx')) {
+        const workbook = new ExcelJS.Workbook();
+        const buffer = await file.arrayBuffer();
+        await workbook.xlsx.load(buffer);
+        const sheet = workbook.worksheets[0];
+        if (!sheet) {
+          showAlert('warning', 'לא נמצאו גיליונות תקינים בקובץ');
+          return;
+        }
+        text = sheet.getSheetValues()
+          .slice(1)
+          .map((row: any) => Array.isArray(row) ? row.slice(1).join('\t') : '')
+          .filter(Boolean)
+          .join('\n');
+      } else {
+        showAlert('warning', 'נתמך כרגע: CSV, TXT, XLSX');
+        return;
+      }
+
+      setSmartImportText(text);
+      const preview = await smartIntegrationApi.previewImport(text, file.name);
+      setSmartImportPreview(preview);
+      if (preview.sourceUnit) setSourceUnit(preview.sourceUnit);
+      if (preview.receiver) setReceiver(preview.receiver);
+      showAlert(preview.lines?.length ? 'success' : 'warning', preview.lines?.length ? 'הקובץ נותח והוכן לייבוא חכם' : 'הקובץ נותח אך לא זוהו שורות פריטים תקינות');
+    } catch (error) {
+      showAlert('error', getErrorMessage(error, 'שגיאה בקריאת קובץ הייבוא'));
+    }
+  };
+
+  const runSmartImport = async () => {
+    if (!smartImportText.trim()) {
+      showAlert('warning', 'הדבק טקסט לפני ניתוח חכם');
+      return;
+    }
+
+    try {
+      setIsImporting(true);
+      const preview = await smartIntegrationApi.previewImport(smartImportText);
+      setSmartImportPreview(preview);
+
+      if (preview.sourceUnit) {
+        setSourceUnit(preview.sourceUnit);
+      }
+      if (preview.receiver) {
+        setReceiver(preview.receiver);
+      }
+
+      showAlert(preview.lines?.length ? 'success' : 'warning', preview.lines?.length ? (preview.usedAi ? 'הייבוא נותח עם AI והוכן להזמנה' : 'הייבוא נותח והוכן להזמנה') : 'הייבוא נותח אך לא זוהו שורות פריטים תקינות');
+    } catch (error) {
+      showAlert('error', getErrorMessage(error, 'שגיאה בניתוח הייבוא החכם'));
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -136,7 +244,7 @@ const ReceivingPage: React.FC = () => {
 
   const addItemToCart = async (item: any, quantity: number = 1) => {
     if (!event) {
-      showAlert('warning', 'יש ליצור אירוע קודם');
+      showAlert('warning', 'יש ליצור הזמנה קודם');
       return;
     }
 
@@ -163,8 +271,8 @@ const ReceivingPage: React.FC = () => {
         setSearchResults([]);
         if (searchInputRef.current) searchInputRef.current.focus();
       }
-    } catch (error: any) {
-      showAlert('error', error.response?.data?.message || 'שגיאה בהוספת פריט');
+    } catch (error) {
+      showAlert('error', getErrorMessage(error, 'שגיאה בהוספת פריט'));
     } finally {
       setIsLoading(false);
     }
@@ -188,12 +296,12 @@ const ReceivingPage: React.FC = () => {
       
       let updatedEvent;
       if (quantityDifference > 0) {
-        // Add more items
+        // The backend expects the target quantity, not the delta.
         updatedEvent = await eventApi.addItem(
           event.id,
           item.itemMakat,
           item.itemName,
-          quantityDifference
+          newQty
         );
       } else if (quantityDifference < 0) {
         // Reduce items - remove and re-add with new quantity
@@ -213,21 +321,26 @@ const ReceivingPage: React.FC = () => {
         setEvent(updatedEvent);
         showAlert('info', `${item.itemName} - כמות עודכנה ל-${newQty}`);
       }
-    } catch (error: any) {
-      showAlert('error', 'שגיאה בעדכון כמות');
+    } catch (error) {
+      showAlert('error', getErrorMessage(error, 'שגיאה בעדכון כמות'));
     } finally {
       setIsLoading(false);
     }
   };
 
   const removeItem = async (itemId: string) => {
+    if (!event) {
+      showAlert('warning', 'אין הזמנה פעילה להסרת פריט');
+      return;
+    }
+
     try {
       setIsLoading(true);
       const updatedEvent = await eventApi.removeItem(event.id, parseInt(itemId));
       setEvent(updatedEvent);
       showAlert('success', 'פריט הוסר מהסל');
-    } catch (error: any) {
-      showAlert('error', 'שגיאה בהסרת פריט');
+    } catch (error) {
+      showAlert('error', getErrorMessage(error, 'שגיאה בהסרת פריט'));
     } finally {
       setIsLoading(false);
     }
@@ -240,29 +353,29 @@ const ReceivingPage: React.FC = () => {
     }
 
     const confirmed = window.confirm(
-      `לשלוח לבחינה? ${event.items.length} פריטים שונים (סה״כ ${totalItems} יחידות)`
+      `לשלוח לבחינה את הזמנה ${event.orderNumber || event.number}? ${event.items.length} פריטים שונים (סה״כ ${totalItems} יחידות)`
     );
     if (!confirmed) return;
 
     try {
       setIsLoading(true);
       await eventApi.submitForInspection(event.id);
-      showAlert('success', '✅ אירוע הוגש לבחינה בהצלחה! פריטים מוכנים לבדיקה');
+      showAlert('success', '✅ ההזמנה הוגשה לבחינה בהצלחה. הפריטים מוכנים לבדיקה');
       setTimeout(() => {
         setEvent(null);
         setSourceUnit('');
         setReceiver('');
         loadRecentItems(); // Refresh recent items
       }, 1500);
-    } catch (error: any) {
-      showAlert('error', error.response?.data?.message || 'שגיאה בהגשת אירוע לבחינה');
+    } catch (error) {
+      showAlert('error', getErrorMessage(error, 'שגיאה בהגשת הזמנה לבחינה'));
     } finally {
       setIsLoading(false);
     }
   };
 
   const resetEvent = () => {
-    const confirmed = window.confirm('לבטל את האירוע הנוכחי? כל הפריטים יימחקו');
+    const confirmed = window.confirm('לבטל את ההזמנה הנוכחית? כל הפריטים יימחקו');
     if (confirmed) {
       setEvent(null);
       setSearchQuery('');
@@ -287,7 +400,7 @@ const ReceivingPage: React.FC = () => {
       <div className="warehouse-page">
         <div className="warehouse-header">
           <h1>📦 קליטת ציוד</h1>
-          <p>יצירת אירוע קליטה חדש</p>
+          <p>יצירת הזמנת קליטה חדשה</p>
           <button 
             className="help-icon-btn"
             onClick={() => setShowHelp(true)}
@@ -331,7 +444,74 @@ const ReceivingPage: React.FC = () => {
 
         <div className="warehouse-container">
           <div className="warehouse-section" style={{ gridColumn: '1 / -1' }}>
-            <h2>⚙️ פרטי אירוע חדש</h2>
+            <h2>🤖 ייבוא חכם להזמנה</h2>
+            <div className="smart-import-panel">
+              <p className="smart-import-description">
+                הדבק טקסט חופשי, TSV, CSV או שורות הזמנה. המערכת תנסה לחלץ מספר הזמנה, יחידה, מקבל ושורות מק״ט אוטומטית.
+              </p>
+              <textarea
+                className="smart-import-textarea"
+                placeholder={"דוגמה:\nמספר הזמנה: 45000123\nיחידה: פלוגה א\nמקבל: רס\"ל כהן\nMKT-001\tסוללה נטענת\t4"}
+                value={smartImportText}
+                onChange={(e) => setSmartImportText(e.target.value)}
+              />
+              <div className="smart-import-actions">
+                <button className="create-event-btn" type="button" onClick={runSmartImport} disabled={isImporting || !smartImportText.trim()}>
+                  {isImporting ? '⏳ מנתח...' : '🧠 נתח ייבוא חכם'}
+                </button>
+                <label className="smart-import-file-btn">
+                  📎 העלה CSV/XLSX
+                  <input
+                    type="file"
+                    accept=".csv,.txt,.xlsx"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        void handleImportFile(file);
+                        e.currentTarget.value = '';
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+
+              {smartImportPreview && (
+                <div className="smart-import-preview">
+                  <div className="smart-import-meta">
+                    <div><strong>מספר הזמנה:</strong> {smartImportPreview.orderNumber || 'לא זוהה'}</div>
+                    <div><strong>יחידה:</strong> {smartImportPreview.sourceUnit || 'לא זוהתה'}</div>
+                    <div><strong>מקבל:</strong> {smartImportPreview.receiver || 'לא זוהה'}</div>
+                    <div><strong>מנוע ניתוח:</strong> {smartImportPreview.usedAi ? 'AI' : 'Heuristic'}</div>
+                  </div>
+
+                  {!!smartImportPreview.warnings?.length && (
+                    <div className="smart-import-warnings">
+                      {smartImportPreview.warnings.map((warning, index) => (
+                        <div key={index} className="alert alert-warning">{warning}</div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="smart-import-lines">
+                    {(smartImportPreview.lines || []).map((line, index) => (
+                      <div key={`${line.makat}-${index}`} className="smart-import-line">
+                          <strong>{line.makat || 'ללא מק״ט'}</strong>
+                          <span>{line.itemName}</span>
+                          <span>כמות: {line.quantity}</span>
+                          <span>{line.matchStatus === 'matched' ? 'מותאם לקטלוג' : line.matchStatus === 'ambiguous' ? 'דורש הכרעה' : 'דורש בדיקה'}</span>
+                          <span>ביטחון: {Math.round((line.confidence || 0) * 100)}%</span>
+                          <span>{line.sapItemCode ? `SAP: ${line.sapItemCode}` : 'לא מוכן ל-SAP'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+              )}
+            </div>
+          </div>
+
+          <div className="warehouse-section" style={{ gridColumn: '1 / -1' }}>
+            <h2>⚙️ פרטי הזמנה חדשה</h2>
             
             <div className="event-creation-form">
               <div className="form-row">
@@ -363,7 +543,7 @@ const ReceivingPage: React.FC = () => {
                 onClick={createEvent} 
                 disabled={isCreatingEvent || !sourceUnit.trim() || !receiver.trim()}
               >
-                {isCreatingEvent ? '⏳ יצירת אירוע...' : '✅ צור אירוע קליטה (Enter)'}
+                {isCreatingEvent ? '⏳ יוצר הזמנה...' : '✅ צור הזמנת קליטה (Enter)'}
               </button>
             </div>
           </div>
@@ -379,7 +559,7 @@ const ReceivingPage: React.FC = () => {
     <div className="warehouse-page">
       <div className="warehouse-header">
         <h1>📦 קליטת ציוד</h1>
-        <p>אירוע פעיל: <strong>{event.number}</strong></p>
+        <p>הזמנה פעילה: <strong>{event.orderNumber || event.number}</strong></p>
         <button 
           className="help-icon-btn"
           onClick={() => setShowHelp(true)}
@@ -459,11 +639,11 @@ const ReceivingPage: React.FC = () => {
           <h2>🔍 חפוש ופריטים אחרונים</h2>
 
           <div className="event-status">
-            <h3>פרטי אירוע</h3>
+            <h3>פרטי הזמנה</h3>
             <div className="event-info">
               <div className="event-info-item">
-                <strong>אירוע</strong>
-                {event.number}
+                <strong>מספר הזמנה</strong>
+                {event.orderNumber || event.number}
               </div>
               <div className="event-info-item">
                 <strong>יחידה</strong>
@@ -656,7 +836,7 @@ const ReceivingPage: React.FC = () => {
                   className="reset-btn"
                   onClick={resetEvent}
                   disabled={isLoading}
-                  title="ביטול מלא של האירוע"
+                  title="ביטול מלא של ההזמנה"
                 >
                   ❌ ביטול
                 </button>
@@ -664,9 +844,9 @@ const ReceivingPage: React.FC = () => {
                   className="complete-btn"
                   onClick={completeEvent}
                   disabled={isLoading || event.items.length === 0}
-                  title="שלח לבחינה (Ctrl+Enter)"
+                  title="שלח הזמנה לבחינה (Ctrl+Enter)"
                 >
-                  {isLoading ? '⏳ שליחה...' : '✅ שלח לבחינה'}
+                  {isLoading ? '⏳ שליחה...' : '✅ שלח הזמנה לבחינה'}
                 </button>
               </div>
             </div>
