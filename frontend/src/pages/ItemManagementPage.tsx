@@ -17,6 +17,7 @@ export const ItemManagementPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'stock'>('name');
   const [mappingDrafts, setMappingDrafts] = useState<Record<number, { sapItemCode: string; sapItemName: string; isVerified: boolean }>>({});
+  const [sapFilter, setSapFilter] = useState<'all' | 'verified' | 'mapped' | 'missing_code' | 'unmapped'>('all');
 
   useEffect(() => {
     loadItems();
@@ -117,11 +118,19 @@ export const ItemManagementPage: React.FC = () => {
   // Hooks must be called before any conditional returns
   const displayedItems = useMemo(() => {
     const filtered = (showInactive ? items : items.filter(i => i.isActive !== false)).filter((item) => {
-      if (!searchTerm.trim()) return true;
-      const query = searchTerm.toLowerCase();
-      return [item.name, item.code]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => value.toLowerCase().includes(query));
+      const matchesSearch =
+        !searchTerm.trim() ||
+        [item.name, item.code, item.sapItemCode, item.sapItemName]
+          .filter((value): value is string => Boolean(value))
+          .some((value) => value.toLowerCase().includes(searchTerm.toLowerCase()));
+
+      if (!matchesSearch) return false;
+
+      if (sapFilter === 'all') return true;
+      if (sapFilter === 'verified') return item.sapMappingStatus === 'verified';
+      if (sapFilter === 'mapped') return item.sapMappingStatus === 'mapped';
+      if (sapFilter === 'missing_code') return item.sapMappingStatus === 'missing_code';
+      return !item.sapMappingStatus || item.sapMappingStatus === 'unmapped';
     });
 
     return filtered.sort((a, b) => {
@@ -130,7 +139,7 @@ export const ItemManagementPage: React.FC = () => {
       }
       return a.name.localeCompare(b.name, 'he');
     });
-  }, [items, showInactive, searchTerm, sortBy]);
+  }, [items, showInactive, searchTerm, sortBy, sapFilter]);
 
   const stats = useMemo(() => {
     return {
@@ -138,8 +147,21 @@ export const ItemManagementPage: React.FC = () => {
       active: items.filter(i => i.isActive !== false).length,
       inactive: items.filter(i => i.isActive === false).length,
       lowStock: items.filter(i => (i.quantityInStock || 0) <= 5).length,
+      verified: items.filter(i => i.sapMappingStatus === 'verified').length,
+      mapped: items.filter(i => i.sapMappingStatus === 'mapped').length,
+      missingCode: items.filter(i => i.sapMappingStatus === 'missing_code').length,
+      unmapped: items.filter(i => !i.sapMappingStatus || i.sapMappingStatus === 'unmapped').length,
     };
   }, [items]);
+
+  const dirtyMappingsCount = useMemo(() => Object.keys(mappingDrafts).length, [mappingDrafts]);
+
+  const getMappingTone = (status?: string) => {
+    if (status === 'verified') return { color: '#065f46', background: '#d1fae5' };
+    if (status === 'mapped') return { color: '#1d4ed8', background: '#dbeafe' };
+    if (status === 'missing_code') return { color: '#9a3412', background: '#ffedd5' };
+    return { color: '#6b7280', background: '#f3f4f6' };
+  };
 
   // Loading state - after all hooks
   if (isLoading) {
@@ -184,6 +206,24 @@ export const ItemManagementPage: React.FC = () => {
           <option value="name">מיון לפי שם</option>
           <option value="stock">מיון לפי מלאי</option>
         </select>
+        <select
+          value={sapFilter}
+          onChange={(e) => setSapFilter(e.target.value as typeof sapFilter)}
+          style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid #e5e7eb' }}
+        >
+          <option value="all">כל מצבי SAP</option>
+          <option value="verified">מאומתים</option>
+          <option value="mapped">ממופים</option>
+          <option value="missing_code">חסר קוד</option>
+          <option value="unmapped">לא ממופים</option>
+        </select>
+      </div>
+
+      <div className="alert alert-info" style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <span>
+          מצב הקטלוג ל-SAP: <strong>{stats.verified}</strong> מאומתים, <strong>{stats.missingCode + stats.unmapped}</strong> דורשים השלמה.
+        </span>
+        <span>{dirtyMappingsCount > 0 ? `${dirtyMappingsCount} שורות עם טיוטת שינוי פתוחה` : 'אין שינויים לא שמורים כרגע'}</span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
@@ -204,8 +244,12 @@ export const ItemManagementPage: React.FC = () => {
           <div style={{ fontSize: '12px', color: '#6b7280' }}>מלאי נמוך</div>
         </div>
         <div className="card" style={{ padding: '12px', textAlign: 'center' }}>
-          <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#3b82f6' }}>{items.filter(i => i.sapMappingStatus === 'verified').length}</div>
+          <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#3b82f6' }}>{stats.verified}</div>
           <div style={{ fontSize: '12px', color: '#6b7280' }}>מיפויי SAP מאומתים</div>
+        </div>
+        <div className="card" style={{ padding: '12px', textAlign: 'center' }}>
+          <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#f59e0b' }}>{stats.missingCode + stats.unmapped}</div>
+          <div style={{ fontSize: '12px', color: '#6b7280' }}>דורשים השלמת SAP</div>
         </div>
       </div>
 
@@ -346,7 +390,9 @@ export const ItemManagementPage: React.FC = () => {
                 </td>
                 <td>
                   <div style={{ display: 'grid', gap: '6px' }}>
-                    <span>{item.sapMappingStatus || 'unmapped'}</span>
+                    <span style={{ ...getMappingTone(item.sapMappingStatus), padding: '4px 8px', borderRadius: '999px', width: 'fit-content', fontSize: '12px', fontWeight: 700 }}>
+                      {item.sapMappingStatus || 'unmapped'}
+                    </span>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <input
                         type="checkbox"

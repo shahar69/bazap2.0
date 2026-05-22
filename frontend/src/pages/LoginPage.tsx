@@ -24,15 +24,15 @@ export const LoginPage: React.FC = () => {
     <div className="login-shell">
       <div className="login-hero">
         <div className="login-hero-panel">
-          <div className="workspace-badge">Bazap 2.0</div>
-          <h1>תפעול ציוד, בחינה, והכנת חבילות SAP ממקום אחד</h1>
+          <div className="workspace-badge">BAZAP / ICT OPERATIONS</div>
+          <h1>מרכז שליטה לוגיסטי עם משמעת תהליך, נראות מצב, וייצוא SAP מסודר</h1>
           <p>
-            חיבור מהיר למערכת עבודה מסודרת: קליטה, בחינה, בקרה, והורדת חבילות ייצוא ל-SAP בלי לרדוף אחרי מידע בין מסכים.
+            סביבת עבודה אחת לחמ"ל ציוד: פתיחת הזמנות, בחינה, סגירת חסמים, והעברת חבילות מסודרות ל-SAP בשפה מקצועית וברורה.
           </p>
           <div className="login-feature-list">
-            <div className="login-feature">Ctrl+K לחיפוש מהיר בין מסכים</div>
-            <div className="login-feature">תהליך ברור: קליטה, בחינה, ייצוא SAP</div>
-            <div className="login-feature">גישה מיידית למשתמש הדגמה</div>
+            <div className="login-feature">חמ"ל תפעולי: שליטה בפתוחים, חריגים ומוכנות ל-SAP</div>
+            <div className="login-feature">תהליך סדור: קליטה, בחינה, מיפוי, חבילת יצוא</div>
+            <div className="login-feature">ניווט מהיר: Command Palette וקיצורי מסכים</div>
           </div>
         </div>
       </div>
@@ -79,7 +79,7 @@ export const LoginPage: React.FC = () => {
 
           <div className="login-demo-box">
             <div>
-              <strong>משתמש דוגמה</strong>
+              <strong>פרופיל הדגמה</strong>
               <p>admin / admin123</p>
             </div>
             <button type="button" className="btn btn-secondary" onClick={fillDemoUser} disabled={isLoading}>
@@ -88,7 +88,7 @@ export const LoginPage: React.FC = () => {
           </div>
 
           <div className="login-helper-text">
-            אחרי הכניסה אפשר לעבוד לפי סדר תפעולי ברור או לקפוץ ישירות למסך שצריך.
+            אחרי הכניסה תראה סביבת שליטה מלאה עם מסכי חמ"ל, קליטה, בחינה, רישומים ומיפויי SAP.
           </div>
         </div>
       </div>

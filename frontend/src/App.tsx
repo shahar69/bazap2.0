@@ -18,6 +18,7 @@ type PageMeta = {
   shortcut: string;
   description: string;
   hint: string;
+  section: string;
 };
 
 const App: React.FC = () => {
@@ -47,51 +48,57 @@ const App: React.FC = () => {
     () => [
       {
         key: 'dashboard',
-        label: 'תמונת מצב',
-        icon: '🎯',
+        label: 'חמ"ל',
+        icon: 'OPS-01',
         shortcut: 'Alt+1',
         description: 'מה פתוח עכשיו, מה מוכן לייצוא SAP, ואיפה יש צווארי בקבוק.',
         hint: 'כאן מתחילים כדי להבין מה דורש טיפול מיידי ומה מחכה להשלמות.',
+        section: 'שליטה ובקרה',
       },
       {
         key: 'receiving',
         label: 'קליטה',
-        icon: '📦',
+        icon: 'OPS-02',
         shortcut: 'Alt+2',
         description: 'פתיחת הזמנת קליטה, הוספת פריטים וייבוא חכם של שורות.',
         hint: 'מתאים כשמגיע ציוד חדש וצריך לפתוח הזמנה מסודרת מיד.',
+        section: 'הפעלת תהליך',
       },
       {
         key: 'inspection',
         label: 'בחינה',
-        icon: '🔍',
+        icon: 'OPS-03',
         shortcut: 'Alt+3',
         description: 'מעבר שיטתי על פריטים, החלטה תקין או מושבת, והכנה להמשך טיפול.',
         hint: 'המסך הזה הכי מהיר כשעובדים ברצף פריטים ולא מדלגים בין הזמנות.',
+        section: 'איכות ובקרה',
       },
       {
         key: 'history',
         label: 'רישומים',
-        icon: '📊',
+        icon: 'OPS-04',
         shortcut: 'Alt+4',
         description: 'חיפוש הזמנות קודמות, סטטוסי יצוא ל-SAP ומעקב תפעולי מלא.',
         hint: 'כאן מאתרים הזמנה, מורידים חבילת SAP ובודקים אם חסרות השלמות.',
+        section: 'מעקב ו-SAP',
       },
       {
         key: 'items',
         label: 'ניהול פריטים',
-        icon: '🛠️',
+        icon: 'OPS-05',
         shortcut: 'Alt+5',
         description: 'ניהול קטלוג, מלאי ומיפויי SAP של הפריטים.',
         hint: 'אם ייצוא SAP לא מוכן, לרוב כאן סוגרים את החוסרים.',
+        section: 'קטלוג ומיפויים',
       },
       {
         key: 'receipt',
         label: 'קבלה',
-        icon: '🧾',
+        icon: 'OPS-06',
         shortcut: 'Alt+6',
         description: 'מסך רישום מהיר כשצריך פעולה קצרה בלי לעבור זרימת הזמנה מלאה.',
         hint: 'שימושי לעבודה מהירה, אבל התהליך המרכזי נשאר דרך הזמנת קליטה.',
+        section: 'עבודה מהירה',
       },
     ],
     []
@@ -120,6 +127,16 @@ const App: React.FC = () => {
         .map((key) => pages.find((page) => page.key === key))
         .filter((page): page is PageMeta => Boolean(page)),
     [recentPageKeys, pages]
+  );
+
+  const missionSteps = useMemo(
+    () => [
+      { label: 'פתיחת הזמנה', page: 'receiving' as PageType },
+      { label: 'בחינה והחלטה', page: 'inspection' as PageType },
+      { label: 'השלמת מיפויי SAP', page: 'items' as PageType },
+      { label: 'הורדת חבילה', page: 'history' as PageType },
+    ],
+    []
   );
 
   useEffect(() => {
@@ -231,37 +248,45 @@ const App: React.FC = () => {
       <header className="app-header">
         <div className="header-container">
           <div className="header-logo">
+            <span className="header-kicker">ICT LOGISTICS CONSOLE</span>
             <h1>Bazap 2.0</h1>
-            <p>ניהול ציוד, בחינה, וייצוא מסודר ל-SAP</p>
+            <p>מרכז שליטה תפעולי לקליטה, בחינה, קטלוג וייצוא SAP</p>
           </div>
-          <nav className="header-nav">
-            {pages.map((page) => (
-              <button
-                key={page.key}
-                onClick={() => setCurrentPage(page.key)}
-                className={`nav-btn ${currentPage === page.key ? 'active' : ''}`}
-                title={`${page.label} (${page.shortcut})`}
-              >
-                {page.icon} {page.label}
-              </button>
-            ))}
-            <div className="header-actions">
-              <button className="command-btn" onClick={openCommandPalette} title="חיפוש מהיר (Ctrl+K)">
-                ⌘ חיפוש
-              </button>
-              <div className="user-info">👤 {user.username}</div>
-              <button onClick={logout} className="logout-btn">
-                התנתקות
-              </button>
+          <div className="header-actions">
+            <button className="command-btn" onClick={openCommandPalette} title="חיפוש מהיר (Ctrl+K)">
+              ⌘ חיפוש מהיר
+            </button>
+            <div className="user-info">
+              <span className="user-caption">משתמש פעיל</span>
+              <strong>{user.username}</strong>
             </div>
-          </nav>
+            <button onClick={logout} className="logout-btn">
+              התנתקות
+            </button>
+          </div>
         </div>
+        <nav className="header-nav">
+          {pages.map((page) => (
+            <button
+              key={page.key}
+              onClick={() => setCurrentPage(page.key)}
+              className={`nav-btn ${currentPage === page.key ? 'active' : ''}`}
+              title={`${page.label} (${page.shortcut})`}
+            >
+              <span className="nav-btn-code">{page.icon}</span>
+              <span className="nav-btn-text">
+                <strong>{page.label}</strong>
+                <small>{page.section}</small>
+              </span>
+            </button>
+          ))}
+        </nav>
       </header>
 
       <main className="app-main" style={{ minHeight: '60vh' }}>
         <section className="workspace-hero">
           <div className="workspace-hero-main">
-            <div className="workspace-badge">פעיל עכשיו</div>
+            <div className="workspace-badge">פעיל עכשיו / {currentPageMeta.section}</div>
             <h2>
               <span>{currentPageMeta.icon}</span> {currentPageMeta.label}
             </h2>
@@ -286,7 +311,7 @@ const App: React.FC = () => {
             </div>
             <div className="hero-tip-card">
               <div className="hero-tip-title">SAP Stage 1</div>
-              <p>המערכת מכינה חבילות ייצוא מסודרות ל-SAP. לא מבוצע sync ישיר בשלב הזה.</p>
+              <p>המערכת מכינה חבילות ייצוא מסודרות ל-SAP. לא מוצג חיבור ישיר כשאין כזה בפועל.</p>
             </div>
             <div className="hero-shortcuts">
               <span>Ctrl+K לחיפוש</span>
@@ -318,20 +343,22 @@ const App: React.FC = () => {
 
           <div className="launcher-card">
             <div className="launcher-card-header">
-              <h3>קצב עבודה</h3>
-              <span>מסכים אחרונים וזרימת צוות</span>
+              <h3>תהליך עבודה מומלץ</h3>
+              <span>קצב חמ"ל, בחינה, ומעבר ל-SAP</span>
             </div>
             <div className="recent-page-list">
-              {recentPages.map((page) => (
-                <button key={page.key} className="recent-page-chip" onClick={() => setCurrentPage(page.key)}>
-                  {page.icon} {page.label}
+              {missionSteps.map((step, index) => (
+                <button key={step.page} className="recent-page-chip" onClick={() => setCurrentPage(step.page)}>
+                  {index + 1}. {step.label}
                 </button>
               ))}
             </div>
-            <div className="hero-shortcuts" style={{ marginTop: '1rem' }}>
-              <span>1. קליטה וייבוא</span>
-              <span>2. בחינה והחלטות</span>
-              <span>3. הורדת חבילת SAP</span>
+            <div className="recent-page-list recent-page-list-secondary">
+              {recentPages.map((page) => (
+                <button key={page.key} className="recent-page-chip secondary" onClick={() => setCurrentPage(page.key)}>
+                  אחרון: {page.label}
+                </button>
+              ))}
             </div>
           </div>
         </section>

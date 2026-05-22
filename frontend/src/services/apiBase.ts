@@ -7,5 +7,14 @@ export const getApiBaseUrl = () => {
     return trimTrailingSlash(envBaseUrl);
   }
 
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname, port } = window.location;
+    const isLocalPreview = (hostname === '127.0.0.1' || hostname === 'localhost') && port && port !== '5000';
+
+    if (isLocalPreview) {
+      return `${protocol}//127.0.0.1:5000/api`;
+    }
+  }
+
   return '/api';
 };

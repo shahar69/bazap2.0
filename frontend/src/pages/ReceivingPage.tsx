@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { eventApi, itemSearchApi, smartIntegrationApi } from '../services/apiClient';
 import ExcelJS from 'exceljs';
 import '../styles/warehouse.css';
@@ -41,6 +41,7 @@ const ReceivingPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [recentItems, setRecentItems] = useState<any[]>([]);
+  const [frequentItems, setFrequentItems] = useState<any[]>([]);
   const [sourceUnit, setSourceUnit] = useState('');
   const [receiver, setReceiver] = useState('');
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
@@ -56,6 +57,7 @@ const ReceivingPage: React.FC = () => {
 
   useEffect(() => {
     loadRecentItems();
+    loadFrequentItems();
     
     // Global keyboard shortcuts
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -97,6 +99,15 @@ const ReceivingPage: React.FC = () => {
       setRecentItems(items || []);
     } catch (error) {
       showAlert('error', 'שגיאה בטעינת פריטים אחרונים');
+    }
+  };
+
+  const loadFrequentItems = async () => {
+    try {
+      const items = await itemSearchApi.getFrequent(8);
+      setFrequentItems(items || []);
+    } catch (error) {
+      showAlert('error', 'שגיאה בטעינת פריטים נפוצים');
     }
   };
 
@@ -394,6 +405,29 @@ const ReceivingPage: React.FC = () => {
     }
   };
 
+  const previewLines = smartImportPreview?.lines || [];
+  const previewReadyLines = previewLines.filter((line) => line.quantity > 0);
+  const previewMatchedLines = previewLines.filter((line) => line.matchStatus === 'matched');
+  const previewReviewLines = previewLines.filter((line) => line.matchStatus !== 'matched');
+  const previewUnits = previewLines.reduce((sum, line) => sum + (line.quantity || 0), 0);
+
+  const intakeSummary = useMemo(() => {
+    const items = event?.items || [];
+    const units = items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+    const heavyLines = items.filter((item: any) => item.quantity >= 20).length;
+    const topLines = [...items]
+      .sort((a: any, b: any) => b.quantity - a.quantity)
+      .slice(0, 5);
+
+    return {
+      units,
+      heavyLines,
+      topLines,
+      searchHits: searchResults.length,
+      recentCount: recentItems.length,
+    };
+  }, [event, recentItems.length, searchResults.length]);
+
   // Event creation form
   if (!event) {
     return (
@@ -443,6 +477,32 @@ const ReceivingPage: React.FC = () => {
         )}
 
         <div className="warehouse-container">
+          <div className="warehouse-section intake-overview-section" style={{ gridColumn: '1 / -1' }}>
+            <div className="intake-overview">
+              <div className="intake-overview-main">
+                <span className="intake-overview-kicker">מחלקת בחינה / staging לפני SAP</span>
+                <h2>הכן הזמנה מסודרת לעומסי עבודה של 300-400 פריטים בלי לפתוח תור ארוך.</h2>
+                <p>
+                  קודם מרכזים שורות, בודקים התאמות, ורק אז פותחים הזמנה. כך צוות הבחינה מקבל עומס נקי יותר ופחות תיקונים ידניים בהמשך.
+                </p>
+              </div>
+              <div className="intake-overview-stats">
+                <div className="intake-stat">
+                  <strong>{previewReadyLines.length}</strong>
+                  <span>שורות מוכנות לפתיחה</span>
+                </div>
+                <div className="intake-stat">
+                  <strong>{previewUnits}</strong>
+                  <span>יחידות שזוהו בייבוא</span>
+                </div>
+                <div className="intake-stat">
+                  <strong>{previewReviewLines.length}</strong>
+                  <span>שורות שדורשות בדיקה</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="warehouse-section" style={{ gridColumn: '1 / -1' }}>
             <h2>🤖 ייבוא חכם להזמנה</h2>
             <div className="smart-import-panel">
@@ -478,6 +538,20 @@ const ReceivingPage: React.FC = () => {
 
               {smartImportPreview && (
                 <div className="smart-import-preview">
+                  <div className="smart-import-readiness">
+                    <div className="readiness-card ready">
+                      <strong>{previewMatchedLines.length}</strong>
+                      <span>מותאמות לקטלוג</span>
+                    </div>
+                    <div className="readiness-card review">
+                      <strong>{previewReviewLines.length}</strong>
+                      <span>דורשות החלטה</span>
+                    </div>
+                    <div className="readiness-card volume">
+                      <strong>{previewUnits}</strong>
+                      <span>יחידות שייכנסו ל-staging</span>
+                    </div>
+                  </div>
                   <div className="smart-import-meta">
                     <div><strong>מספר הזמנה:</strong> {smartImportPreview.orderNumber || 'לא זוהה'}</div>
                     <div><strong>יחידה:</strong> {smartImportPreview.sourceUnit || 'לא זוהתה'}</div>
@@ -546,6 +620,21 @@ const ReceivingPage: React.FC = () => {
                 {isCreatingEvent ? '⏳ יוצר הזמנה...' : '✅ צור הזמנת קליטה (Enter)'}
               </button>
             </div>
+
+            <div className="receiving-discipline-strip">
+              <div className="discipline-item">
+                <strong>01</strong>
+                <span>ייבוא או חיפוש מהיר של שורות</span>
+              </div>
+              <div className="discipline-item">
+                <strong>02</strong>
+                <span>פתיחת הזמנה אחת מרוכזת למחלקה</span>
+              </div>
+              <div className="discipline-item">
+                <strong>03</strong>
+                <span>העברה לבחינה רק כשהתמונה נקייה</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -554,6 +643,7 @@ const ReceivingPage: React.FC = () => {
 
   // Active event with cart
   const totalItems = event.items?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
+  const uniqueItems = event.items?.length || 0;
 
   return (
     <div className="warehouse-page">
@@ -634,9 +724,52 @@ const ReceivingPage: React.FC = () => {
       )}
 
       <div className="warehouse-container">
+        <div className="warehouse-section intake-command-section" style={{ gridColumn: '1 / -1' }}>
+          <div className="intake-command">
+            <div className="intake-command-main">
+              <span className="intake-overview-kicker">הזמנה פעילה / משמעת עומס</span>
+              <h2>{event.orderNumber || event.number}</h2>
+              <p>
+                מרכזים כמה שיותר יחידות להזמנה אחת, מקטינים תור, ומעבירים לבחינה רק כשה-staging ברור.
+              </p>
+            </div>
+            <div className="intake-command-stats">
+              <div className="intake-stat">
+                <strong>{uniqueItems}</strong>
+                <span>שורות שונות</span>
+              </div>
+              <div className="intake-stat">
+                <strong>{totalItems}</strong>
+                <span>יחידות בסך הכל</span>
+              </div>
+              <div className="intake-stat">
+                <strong>{intakeSummary.heavyLines}</strong>
+                <span>שורות כבדות לטיפול</span>
+              </div>
+            </div>
+          </div>
+          <div className="intake-top-lines">
+            <div className="intake-top-lines-header">
+              <strong>מוקדי עומס להזמנה זו</strong>
+              <span>עוזר למחלקת בחינה לראות מה יגיע ראשון</span>
+            </div>
+            <div className="intake-top-lines-grid">
+              {intakeSummary.topLines.length > 0 ? intakeSummary.topLines.map((item: any) => (
+                <div key={item.id} className="top-line-card">
+                  <span className="top-line-code">{item.itemMakat}</span>
+                  <strong>{item.itemName}</strong>
+                  <span>{item.quantity} יחידות</span>
+                </div>
+              )) : (
+                <div className="top-line-empty">עדיין אין פריטים ב-staging.</div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* LEFT COLUMN: Search & Recent */}
         <div className="warehouse-section">
-          <h2>🔍 חפוש ופריטים אחרונים</h2>
+          <h2>🔍 קליטה מהירה והעמסה מרוכזת</h2>
 
           <div className="event-status">
             <h3>פרטי הזמנה</h3>
@@ -721,6 +854,28 @@ const ReceivingPage: React.FC = () => {
             )}
           </div>
 
+          {frequentItems.length > 0 && (
+            <>
+              <div className="recent-items-title">⚡ פריטים נפוצים למחלקה</div>
+              <div className="frequent-items-list">
+                {frequentItems.map((item) => (
+                  <button
+                    key={item.id}
+                    className="frequent-item-row"
+                    onClick={() => openQuickAddModal(item)}
+                    title={`${item.name} - הוסף במהירות`}
+                  >
+                    <div>
+                      <span className="recent-item-code">{item.makat}</span>
+                      <span className="recent-item-name">{item.name}</span>
+                    </div>
+                    <span className="frequent-item-action">כמות</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           {recentItems.length > 0 && (
             <>
               <div className="recent-items-title">⭐ פריטים אחרונים</div>
@@ -744,7 +899,7 @@ const ReceivingPage: React.FC = () => {
 
         {/* RIGHT COLUMN: Cart */}
         <div className="warehouse-section">
-          <h2>🛒 סל קליטה</h2>
+          <h2>🛒 staging לקראת בחינה</h2>
 
           {!event.items || event.items.length === 0 ? (
             <div className="empty-state">
@@ -756,6 +911,21 @@ const ReceivingPage: React.FC = () => {
             </div>
           ) : (
             <div className="cart-container">
+              <div className="cart-prep-strip">
+                <div className="prep-card">
+                  <strong>{uniqueItems}</strong>
+                  <span>שורות פתוחות</span>
+                </div>
+                <div className="prep-card">
+                  <strong>{totalItems}</strong>
+                  <span>יחידות מרוכזות</span>
+                </div>
+                <div className="prep-card">
+                  <strong>{intakeSummary.heavyLines}</strong>
+                  <span>שורות שמומלץ לבחון באצווה</span>
+                </div>
+              </div>
+
               <table className="cart-table">
                 <thead>
                   <tr>
@@ -819,15 +989,19 @@ const ReceivingPage: React.FC = () => {
               <div className="cart-summary">
                 <div className="summary-item">
                   <strong>סה״כ פריטים שונים:</strong>
-                  <strong>{event.items.length}</strong>
+                  <strong>{uniqueItems}</strong>
                 </div>
                 <div className="summary-item">
                   <strong>סה״כ יחידות:</strong>
                   <strong>{totalItems}</strong>
                 </div>
+                <div className="summary-item">
+                  <strong>משמעת עומס:</strong>
+                  <strong>{intakeSummary.heavyLines > 0 ? 'דורש חלוקת בחינה לאצוות' : 'מוכן להעברה מסודרת'}</strong>
+                </div>
                 <div className="summary-total">
                   <span>✅ מוכן לשליחה</span>
-                  <span>{event.items.length} פריטים • {totalItems} יחידות</span>
+                  <span>{uniqueItems} פריטים • {totalItems} יחידות</span>
                 </div>
               </div>
 
