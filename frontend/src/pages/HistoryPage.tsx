@@ -37,7 +37,10 @@ interface Filters {
   searchTerm?: string;
   fromDate?: string;
   toDate?: string;
+  sapState?: SapStateFilter;
 }
+
+type SapStateFilter = 'all' | 'ready' | 'exported' | 'failed' | 'blocked';
 
 export const HistoryPage: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
@@ -52,6 +55,7 @@ export const HistoryPage: React.FC = () => {
   const [sortBy, setSortBy] = useState<'date' | 'items' | 'event'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [sapActionLoadingId, setSapActionLoadingId] = useState<number | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   useEffect(() => {
     loadEvents();
@@ -104,6 +108,10 @@ export const HistoryPage: React.FC = () => {
       result = result.filter((e) => new Date(e.createdDate) <= toDate);
     }
 
+    if (filters.sapState && filters.sapState !== 'all') {
+      result = result.filter((event) => getSapLifecycleState(event) === filters.sapState);
+    }
+
     result.sort((a, b) => {
       let comparison = 0;
       switch (sortBy) {
@@ -128,9 +136,36 @@ export const HistoryPage: React.FC = () => {
   }, []);
 
   const handleReset = useCallback(() => {
-    setFilters({});
+    setFilters({ sapState: 'all' });
     setSortBy('date');
     setSortOrder('desc');
+  }, []);
+
+  const openEventDetails = useCallback(async (event: Event) => {
+    setSelectedEvent(event);
+    setShowDetailsModal(true);
+    setDetailsLoading(true);
+
+    try {
+      const latestStatus = await smartIntegrationApi.getSapStatus(event.id);
+      setSelectedEvent((prev) =>
+        prev && prev.id === event.id
+          ? {
+              ...prev,
+              sapReady: latestStatus.sapReady,
+              sapSyncStatus: latestStatus.status,
+              sapSyncMessage: latestStatus.message,
+              sapDocumentType: latestStatus.sapDocumentType,
+              sapDocEntry: latestStatus.docEntry,
+              sapDocNum: latestStatus.docNum,
+            }
+          : prev
+      );
+    } catch (err) {
+      setError(getErrorMessage(err, 'שגיאה בטעינת סטטוס SAP עדכני'));
+    } finally {
+      setDetailsLoading(false);
+    }
   }, []);
 
   const handleExportAll = useCallback(async () => {
@@ -215,7 +250,16 @@ export const HistoryPage: React.FC = () => {
       active: filteredEvents.filter((e) => !isCompletedStatus(e.status)).length,
       completed: filteredEvents.filter((e) => isCompletedStatus(e.status)).length,
       totalItems: filteredEvents.reduce((sum, e) => sum + (e.items?.length || 0), 0),
+      sapReady: filteredEvents.filter((event) => getSapLifecycleState(event) === 'ready').length,
+      sapExported: filteredEvents.filter((event) => getSapLifecycleState(event) === 'exported').length,
+      sapFailed: filteredEvents.filter((event) => getSapLifecycleState(event) === 'failed').length,
+      sapBlocked: filteredEvents.filter((event) => getSapLifecycleState(event) === 'blocked').length,
     }),
+    [filteredEvents]
+  );
+
+  const readyEvents = useMemo(
+    () => filteredEvents.filter((event) => getSapLifecycleState(event) === 'ready'),
     [filteredEvents]
   );
 
@@ -311,6 +355,20 @@ export const HistoryPage: React.FC = () => {
                 onChange={(e) => handleFilterChange({ searchTerm: e.target.value || undefined })}
               />
             </div>
+
+            <div className="filter-group">
+              <label>מצב SAP:</label>
+              <select
+                value={filters.sapState ?? 'all'}
+                onChange={(e) => handleFilterChange({ sapState: e.target.value as SapStateFilter })}
+              >
+                <option value="all">הכל</option>
+                <option value="ready">מוכן לייצוא</option>
+                <option value="exported">חבילה הוכנה</option>
+                <option value="failed">נכשל</option>
+                <option value="blocked">חסום / דורש השלמות</option>
+              </select>
+            </div>
           </div>
 
           <div className="filters-actions">
@@ -337,6 +395,44 @@ export const HistoryPage: React.FC = () => {
         <div className="stat">
           <span className="stat-label">סה״כ פריטים</span>
           <span className="stat-value" style={{ color: '#3b82f6' }}>{stats.totalItems}</span>
+        </div>
+      </div>
+
+      <div className="sap-summary-grid">
+        <div className="sap-summary-card">
+          <span className="sap-summary-label">מוכנות עכשיו</span>
+          <strong className="sap-summary-value ready">{stats.sapReady}</strong>
+          <small>{readyEvents.length > 0 ? 'אפשר להכין חבילות SAP מיד' : 'אין כרגע הזמנות מוכנות'}</small>
+        </div>
+        <div className="sap-summary-card">
+          <span className="sap-summary-label">חבילות שהוכנו</span>
+          <strong className="sap-summary-value exported">{stats.sapExported}</strong>
+          <small>כבר עברו דרך מנגנון הייצוא</small>
+        </div>
+        <div className="sap-summary-card">
+          <span className="sap-summary-label">כשלים לייצוא</span>
+          <strong className="sap-summary-value failed">{stats.sapFailed}</strong>
+          <small>{stats.sapFailed > 0 ? 'דורש בדיקה או ניסיון חוזר' : 'אין כשלים פתוחים'}</small>
+        </div>
+        <div className="sap-summary-card">
+          <span className="sap-summary-label">חסומים</span>
+          <strong className="sap-summary-value blocked">{stats.sapBlocked}</strong>
+          <small>בדרך כלל חסרים מיפויי SAP או השלמות פריט</small>
+        </div>
+      </div>
+
+      <div className="sap-insight-banner">
+        <div>
+          <strong>SAP Stage 1</strong>
+          <span>המערכת מכינה חבילות ייצוא מסודרות להורדה והעברה, לא sync ישיר.</span>
+        </div>
+        <div className="sap-insight-actions">
+          <button className="btn-secondary" onClick={() => handleFilterChange({ sapState: 'ready' })}>
+            הצג רק מוכנות
+          </button>
+          <button className="btn-secondary" onClick={() => handleFilterChange({ sapState: 'blocked' })}>
+            הצג חסומות
+          </button>
         </div>
       </div>
 
@@ -417,10 +513,7 @@ export const HistoryPage: React.FC = () => {
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                         <button
                           className="btn-details"
-                          onClick={() => {
-                            setSelectedEvent(event);
-                            setShowDetailsModal(true);
-                          }}
+                          onClick={() => openEventDetails(event)}
                         >
                           📋 פרטים
                         </button>
@@ -451,6 +544,8 @@ export const HistoryPage: React.FC = () => {
             </div>
 
             <div className="modal-body">
+              {detailsLoading && <div className="alert alert-info">טוען סטטוס SAP עדכני...</div>}
+
               <div className="event-info-grid">
                 <div className="info-item">
                   <label>סוג הזמנה:</label>
@@ -496,6 +591,23 @@ export const HistoryPage: React.FC = () => {
                   <label>סטטוס חבילת ייצוא:</label>
                   <p>{selectedEvent.sapSyncMessage || '-'}</p>
                 </div>
+                {selectedEvent.sapDocEntry ? (
+                  <div className="info-item">
+                    <label>DocEntry:</label>
+                    <p>{selectedEvent.sapDocEntry}</p>
+                  </div>
+                ) : null}
+                {selectedEvent.sapDocNum ? (
+                  <div className="info-item">
+                    <label>DocNum:</label>
+                    <p>{selectedEvent.sapDocNum}</p>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className={`sap-status-panel state-${getSapLifecycleState(selectedEvent)}`}>
+                <strong>{getSapStatusName(selectedEvent)}</strong>
+                <p>{selectedEvent.sapSyncMessage || getSapGuidance(selectedEvent)}</p>
               </div>
 
               {selectedEvent.items && selectedEvent.items.length > 0 && (
@@ -522,6 +634,13 @@ export const HistoryPage: React.FC = () => {
             </div>
 
             <div className="modal-footer">
+              <button
+                className="btn-details"
+                disabled={sapActionLoadingId === selectedEvent.id || !selectedEvent.sapReady}
+                onClick={() => handlePushSap(selectedEvent.id)}
+              >
+                {sapActionLoadingId === selectedEvent.id ? '⏳ מכין...' : '🏭 הורד חבילת SAP'}
+              </button>
               <button className="btn-secondary" onClick={() => setShowDetailsModal(false)}>
                 סגור
               </button>
@@ -564,6 +683,21 @@ function getSapStatusName(event: Event): string {
   if (event.sapSyncStatus === 'failed') return 'ייצוא SAP נכשל';
   if (event.sapReady) return 'מוכן לייצוא SAP';
   return 'דורש השלמות לפני ייצוא';
+}
+
+function getSapLifecycleState(event: Event): SapStateFilter {
+  if (event.sapSyncStatus === 'exported' || event.sapSyncStatus === 'synced') return 'exported';
+  if (event.sapSyncStatus === 'failed') return 'failed';
+  if (event.sapReady) return 'ready';
+  return 'blocked';
+}
+
+function getSapGuidance(event: Event): string {
+  const state = getSapLifecycleState(event);
+  if (state === 'exported') return 'החבילה כבר נוצרה. אפשר להוריד שוב ולשמור לצורכי audit.';
+  if (state === 'failed') return 'כדאי לבדוק מיפויי פריטים או לנסות מחדש אחרי אימות הנתונים.';
+  if (state === 'ready') return 'ההזמנה מוכנה. אפשר להוריד חבילת SAP ולהעביר לתהליך ההטמעה.';
+  return 'חסרים מיפויי SAP או פרטים נדרשים לפני יצוא.';
 }
 
 function isCompletedStatus(status: number): boolean {

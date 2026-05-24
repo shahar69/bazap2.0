@@ -337,23 +337,8 @@ export const smartIntegrationApi = {
     return { blob: response.data, fileName };
   },
 
-  pushSap: async (eventIds: number[], forceFileFallback: boolean = false) => {
-    const response = await api.post('/smart-integration/sap/push', { eventIds, forceFileFallback });
-    return response.data;
-  },
-
   getSapStatus: async (eventId: number) => {
     const response = await api.get(`/smart-integration/sap/status/${eventId}`);
-    return response.data;
-  },
-
-  retrySap: async (eventId: number) => {
-    const response = await api.post(`/smart-integration/sap/retry/${eventId}`);
-    return response.data;
-  },
-
-  getItemMappings: async () => {
-    const response = await api.get('/smart-integration/sap/mappings/items');
     return response.data;
   },
 

@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { eventApi, inspectionApi } from '../services/apiClient';
 import '../styles/inspection.css';
 import { getErrorMessage } from '../utils/errors';
+import { getApiBaseUrl } from '../services/apiBase';
 
 interface Alert {
   type: 'success' | 'error' | 'warning';
@@ -32,7 +33,7 @@ const InspectionPage: React.FC = () => {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
   const [disableMode, setDisableMode] = useState<'single' | 'bulk'>('single');
   const [autoAdvance, setAutoAdvance] = useState(true);
-  const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
+  const [viewMode, setViewMode] = useState<'single' | 'grid'>('grid');
   const [gridSelectedIds, setGridSelectedIds] = useState<Set<number>>(new Set());
   const [reasonSuggestions, setReasonSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -96,7 +97,7 @@ const InspectionPage: React.FC = () => {
 
   const loadReasonSuggestions = async (makat: string) => {
     try {
-      const response = await fetch(`/api/inspection/suggestions/${encodeURIComponent(makat)}`);
+      const response = await fetch(`${getApiBaseUrl()}/inspection/suggestions/${encodeURIComponent(makat)}`);
       const suggestions = await response.json();
       setReasonSuggestions(suggestions || []);
     } catch (error) {
@@ -176,6 +177,41 @@ const InspectionPage: React.FC = () => {
         .some((value: string) => value.toLowerCase().includes(query));
     });
   }, [currentEvent, itemFilter, itemSearch]);
+
+  const queueSummary = useMemo(() => {
+    const items = currentEvent?.items || [];
+    const pendingItems = items.filter((item: any) => item.inspectionStatus === 0);
+    const grouped = new Map<string, { makat: string; itemName: string; lines: number; units: number }>();
+
+    pendingItems.forEach((item: any) => {
+      const key = item.itemMakat || item.itemName || `${item.id}`;
+      const current = grouped.get(key);
+
+      if (current) {
+        current.lines += 1;
+        current.units += item.quantity || 0;
+        return;
+      }
+
+      grouped.set(key, {
+        makat: item.itemMakat,
+        itemName: item.itemName,
+        lines: 1,
+        units: item.quantity || 0,
+      });
+    });
+
+    const suggestedBatches = Array.from(grouped.values())
+      .sort((a, b) => b.units - a.units)
+      .slice(0, 6);
+
+    return {
+      pendingItems,
+      suggestedBatches,
+      distinctPending: grouped.size,
+      selectedCount: viewMode === 'grid' ? gridSelectedIds.size : selectedItemIds.size,
+    };
+  }, [currentEvent, gridSelectedIds.size, selectedItemIds.size, viewMode]);
 
   const toggleItemSelection = (itemId: number) => {
     setSelectedItemIds((prev) => {
@@ -554,6 +590,30 @@ const InspectionPage: React.FC = () => {
             </div>
           ) : (
             <div className="events-list-container">
+              <div className="inspection-intake-banner">
+                <div>
+                  <span className="inspection-kicker">מחלקת בחינה / עבודה במסות גדולות</span>
+                  <h2>מרכזים הזמנות לפני SAP ומטפלים לפי אצוות, לא לפי תור אינסופי.</h2>
+                  <p>
+                    המסך ממיין לפי עומס, מציג הזמנות כבדות קודם, ומכין את המעבדה לעבודה מהירה על מאות פריטים באותה משמרת.
+                  </p>
+                </div>
+                <div className="inspection-banner-stats">
+                  <div className="inspection-banner-card">
+                    <strong>{events.length}</strong>
+                    <span>הזמנות ממתינות</span>
+                  </div>
+                  <div className="inspection-banner-card">
+                    <strong>{events.reduce((sum, event) => sum + (event.items?.length || 0), 0)}</strong>
+                    <span>שורות לבחינה</span>
+                  </div>
+                  <div className="inspection-banner-card">
+                    <strong>{Math.max(...events.map((event) => event.items?.length || 0), 0)}</strong>
+                    <span>הזמנה כבדה ביותר</span>
+                  </div>
+                </div>
+              </div>
+
               <div className="events-list-header">
                 <h2>🎯 הזמנות בהמתנה: {filteredEvents.length}</h2>
                 <div className="events-toolbar">
@@ -665,6 +725,67 @@ const InspectionPage: React.FC = () => {
           </div>
         </div>
 
+        <div className="inspection-command-strip">
+          <div className="command-card">
+            <span>ממתינים בפועל</span>
+            <strong>{pending}</strong>
+            <small>שורות שעוד לא נסגרו</small>
+          </div>
+          <div className="command-card">
+            <span>סוגי פריט ממתינים</span>
+            <strong>{queueSummary.distinctPending}</strong>
+            <small>עוזר לאצווה במקום פיזור</small>
+          </div>
+          <div className="command-card">
+            <span>בחירה נוכחית</span>
+            <strong>{queueSummary.selectedCount}</strong>
+            <small>{viewMode === 'grid' ? 'פריטים מסומנים ברשת' : 'פריטים מסומנים בתור'}</small>
+          </div>
+        </div>
+
+        {queueSummary.suggestedBatches.length > 0 && (
+          <div className="batch-command-board">
+            <div className="batch-command-header">
+              <div>
+                <span className="inspection-kicker">אצוות מומלצות למחלקה</span>
+                <h3>סגור קודם ריכוזים גדולים כדי לא לייצר backlog לפני SAP.</h3>
+              </div>
+              <button
+                className="mini-btn"
+                onClick={() => {
+                  if (queueSummary.pendingItems.length === 0) {
+                    showAlert('warning', 'אין פריטים ממתינים לעיבוד');
+                    return;
+                  }
+                  setBatchQuantity(Math.min(queueSummary.pendingItems.length, 25));
+                  setShowBatchModal(true);
+                }}
+              >
+                פתח אצווה מהירה
+              </button>
+            </div>
+            <div className="batch-command-grid">
+              {queueSummary.suggestedBatches.map((batch) => (
+                <button
+                  key={`${batch.makat}-${batch.itemName}`}
+                  className="batch-suggestion-card"
+                  onClick={() => {
+                    setItemSearch(batch.makat || batch.itemName);
+                    setItemFilter('pending');
+                    setBatchQuantity(batch.lines);
+                    setViewMode('grid');
+                  }}
+                >
+                  <span className="batch-suggestion-code">{batch.makat || 'ללא מק"ט'}</span>
+                  <strong>{batch.itemName}</strong>
+                  <span>{batch.lines} שורות ממתינות</span>
+                  <span>{batch.units} יחידות לצבירה</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
           <button className="back-btn" onClick={goBack} disabled={isPrinting}>
             ⬅️ חזור
@@ -756,6 +877,9 @@ const InspectionPage: React.FC = () => {
               </div>
               <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
                 נבחרו {gridSelectedIds.size} פריטים | {pending} ממתינים
+              </div>
+              <div style={{ fontSize: '0.85rem', color: '#475569', marginTop: '0.5rem' }}>
+                השתמש בכרטיסי האצווה מעל כדי להתמקד במקטים שחוזרים הרבה ולהקטין backlog לפני היצוא.
               </div>
             </div>
 

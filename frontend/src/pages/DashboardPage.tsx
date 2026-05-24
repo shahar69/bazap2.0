@@ -70,7 +70,6 @@ const DashboardPage: React.FC = () => {
       setRefreshing(true);
       setError('');
       const events: EventDto[] = await eventApi.getAllEvents();
-      console.log('📊 Events loaded:', events?.length || 0);
       setEvents(events || []);
       
       const recent = (events || [])
