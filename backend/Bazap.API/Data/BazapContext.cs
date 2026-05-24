@@ -22,6 +22,7 @@ public class BazapContext : DbContext
     public DbSet<SapIntegrationProfile> SapIntegrationProfiles { get; set; }
     public DbSet<ItemSapMapping> ItemSapMappings { get; set; }
     public DbSet<SapSyncLog> SapSyncLogs { get; set; }
+    public DbSet<InspectionRecord> InspectionRecords { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -107,6 +108,12 @@ public class BazapContext : DbContext
             .WithMany()
             .HasForeignKey(l => l.EventId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<InspectionRecord>()
+            .HasIndex(r => r.InspectedAt);
+
+        modelBuilder.Entity<InspectionRecord>()
+            .HasIndex(r => r.DisableReason);
 
         // Seed default admin user (password: admin123)
         var adminPasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123");

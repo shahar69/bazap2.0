@@ -55,6 +55,7 @@ builder.Services.AddScoped<SapIntegrationProfileResolver>();
 builder.Services.AddScoped<FileExportSapTransportAdapter>();
 builder.Services.AddScoped<ServiceLayerSapTransportAdapter>();
 builder.Services.AddScoped<ISapSyncOrchestrator, SapSyncOrchestrator>();
+builder.Services.AddScoped<IDepartmentInspectionService, DepartmentInspectionService>();
 
 // Add controllers
 builder.Services.AddControllers();
@@ -93,6 +94,7 @@ try
         context.Database.EnsureCreated();
         logger.LogInformation("📋 Database tables created");
         EnsureSapTables(context);
+        EnsureDepartmentInspectionTables(context);
         
         // Seed default data
         var existingUsers = context.Users.Any();
@@ -364,4 +366,28 @@ CREATE TABLE IF NOT EXISTS SapSyncLogs (
         });
         context.SaveChanges();
     }
+}
+
+static void EnsureDepartmentInspectionTables(BazapContext context)
+{
+    context.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS InspectionRecords (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    Makat TEXT NULL,
+    ItemName TEXT NULL,
+    Quantity INTEGER NOT NULL,
+    Decision TEXT NOT NULL,
+    DisableReason TEXT NULL,
+    Notes TEXT NULL,
+    InspectedAt TEXT NOT NULL,
+    InspectedBy TEXT NOT NULL,
+    SourceUnit TEXT NULL,
+    SapExportedAt TEXT NULL
+);");
+
+    context.Database.ExecuteSqlRaw(@"
+CREATE INDEX IF NOT EXISTS IX_InspectionRecords_InspectedAt ON InspectionRecords(InspectedAt);");
+
+    context.Database.ExecuteSqlRaw(@"
+CREATE INDEX IF NOT EXISTS IX_InspectionRecords_DisableReason ON InspectionRecords(DisableReason);");
 }
